@@ -2,8 +2,6 @@
 
 > 一款专为拼豆爱好者设计的桌面应用程序
 
-[![Build and Release](https://github.com/your-username/bunnycc-perler/actions/workflows/build.yml/badge.svg)](https://github.com/your-username/bunnycc-perler/actions/workflows/build.yml)
-[![CI](https://github.com/your-username/bunnycc-perler/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/bunnycc-perler/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/your-username/bunnycc-perler/releases)
 
