@@ -18,6 +18,10 @@ class ImageProcessingProvider extends ChangeNotifier {
   ui.Image? _flutterOriginalImage;
   ui.Image? _flutterPreviewImage;
 
+  int _originalImageWidth = 0;
+  int _originalImageHeight = 0;
+  bool _wasImageResized = false;
+
   int _outputWidth = 29;
   int _outputHeight = 29;
   bool _maintainAspectRatio = true;
@@ -26,6 +30,7 @@ class ImageProcessingProvider extends ChangeNotifier {
   ProcessingState _state = ProcessingState.idle;
   double _progress = 0.0;
   String? _errorMessage;
+  String? _warningMessage;
 
   BeadDesign? _resultDesign;
   List<ColorAnalysisResult> _colorAnalysis = [];
@@ -42,6 +47,10 @@ class ImageProcessingProvider extends ChangeNotifier {
   ui.Image? get flutterOriginalImage => _flutterOriginalImage;
   ui.Image? get flutterPreviewImage => _flutterPreviewImage;
 
+  int get originalImageWidth => _originalImageWidth;
+  int get originalImageHeight => _originalImageHeight;
+  bool get wasImageResized => _wasImageResized;
+
   int get outputWidth => _outputWidth;
   int get outputHeight => _outputHeight;
   bool get maintainAspectRatio => _maintainAspectRatio;
@@ -50,6 +59,7 @@ class ImageProcessingProvider extends ChangeNotifier {
   ProcessingState get state => _state;
   double get progress => _progress;
   String? get errorMessage => _errorMessage;
+  String? get warningMessage => _warningMessage;
   BeadDesign? get resultDesign => _resultDesign;
   List<ColorAnalysisResult> get colorAnalysis => _colorAnalysis;
 
@@ -87,13 +97,24 @@ class ImageProcessingProvider extends ChangeNotifier {
   Future<void> _loadImageFile(File file) async {
     _setState(ProcessingState.loading);
     _selectedFile = file;
+    _warningMessage = null;
 
     try {
-      _originalImage = await _service.loadImage(file);
+      final loadResult = await _service.loadImageWithResize(file);
 
-      if (_originalImage == null) {
-        _setError('无法加载图片');
+      if (loadResult == null) {
+        _setError('无法加载图片，请确保文件是有效的图片格式');
         return;
+      }
+
+      _originalImage = loadResult.image;
+      _originalImageWidth = loadResult.originalWidth;
+      _originalImageHeight = loadResult.originalHeight;
+      _wasImageResized = loadResult.wasResized;
+
+      if (loadResult.wasResized) {
+        _warningMessage =
+            '图片已自动缩放: ${loadResult.originalWidth}x${loadResult.originalHeight} → ${loadResult.image.width}x${loadResult.image.height}';
       }
 
       _originalAspectRatio = _originalImage!.width / _originalImage!.height;
@@ -304,11 +325,20 @@ class ImageProcessingProvider extends ChangeNotifier {
     _previewImage = null;
     _flutterOriginalImage = null;
     _flutterPreviewImage = null;
+    _originalImageWidth = 0;
+    _originalImageHeight = 0;
+    _wasImageResized = false;
     _resultDesign = null;
     _colorAnalysis = [];
     _progress = 0.0;
     _errorMessage = null;
+    _warningMessage = null;
     _setState(ProcessingState.idle);
+  }
+
+  void clearWarning() {
+    _warningMessage = null;
+    notifyListeners();
   }
 
   void reset() {

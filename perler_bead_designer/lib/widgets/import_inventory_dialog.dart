@@ -1,13 +1,13 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../providers/inventory_provider.dart';
+import '../services/smart_import_service.dart';
+import 'column_mapping_dialog.dart';
 
 class ImportInventoryDialog extends StatefulWidget {
   const ImportInventoryDialog({super.key});
@@ -23,15 +23,15 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
   List<InventoryItem> _previewItems = [];
   bool _isLoading = false;
   String? _error;
+  SmartImportResult? _importResult;
+  List<ColumnMapping>? _currentMappings;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return AlertDialog(
       title: const Text('导入库存'),
       content: SizedBox(
-        width: 600,
+        width: 650,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,6 +42,10 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
             if (_error != null) ...[
               const SizedBox(height: 12),
               _buildErrorDisplay(context),
+            ],
+            if (_importResult != null && _importResult!.needsManualMapping) ...[
+              const SizedBox(height: 12),
+              _buildManualMappingHint(context),
             ],
             if (_fileContent != null && _previewItems.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -57,18 +61,14 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'),
         ),
-        FilledButton(
-          onPressed: _previewItems.isNotEmpty && !_isLoading
-              ? _importItems
-              : null,
-          child: _isLoading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('导入'),
-        ),
+        if (_importResult != null && _importResult!.needsManualMapping)
+          FilledButton.icon(
+            onPressed: _showColumnMappingDialog,
+            icon: const Icon(Icons.edit, size: 18),
+            label: const Text('设置列映射'),
+          ),
+        if (_previewItems.isNotEmpty && !_isLoading)
+          FilledButton(onPressed: _importItems, child: const Text('导入')),
       ],
     );
   }
@@ -87,6 +87,11 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
               icon: Icon(Icons.table_chart),
             ),
             ButtonSegment(
+              value: ImportFormat.xlsx,
+              label: Text('XLSX'),
+              icon: Icon(Icons.grid_on),
+            ),
+            ButtonSegment(
               value: ImportFormat.json,
               label: Text('JSON'),
               icon: Icon(Icons.code),
@@ -100,6 +105,8 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
               _fileName = null;
               _previewItems = [];
               _error = null;
+              _importResult = null;
+              _currentMappings = null;
             });
           },
         ),
@@ -111,18 +118,18 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return InkWell(
-      onTap: _pickFile,
+      onTap: _isLoading ? null : _pickFile,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           border: Border.all(
-            color: colorScheme.outline.withOpacity(0.5),
+            color: colorScheme.outline.withValues(alpha: 0.5),
             width: 2,
           ),
           borderRadius: BorderRadius.circular(12),
-          color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         ),
         child: Column(
           children: [
@@ -138,9 +145,7 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
             ),
             const SizedBox(height: 4),
             Text(
-              _selectedFormat == ImportFormat.csv
-                  ? '支持 .csv 格式'
-                  : '支持 .json 格式',
+              _getFormatHint(),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -149,6 +154,17 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
         ),
       ),
     );
+  }
+
+  String _getFormatHint() {
+    switch (_selectedFormat) {
+      case ImportFormat.csv:
+        return '支持 .csv 格式，自动识别分隔符和编码';
+      case ImportFormat.xlsx:
+        return '支持 .xlsx / .xls 格式';
+      case ImportFormat.json:
+        return '支持 .json 格式';
+    }
   }
 
   Widget _buildErrorDisplay(BuildContext context) {
@@ -167,6 +183,35 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
               _error!,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManualMappingHint(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.tertiaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            color: Theme.of(context).colorScheme.tertiary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '无法自动识别所有列，请点击"设置列映射"手动选择',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onTertiaryContainer,
               ),
             ),
           ),
@@ -195,7 +240,7 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
       height: 200,
       decoration: BoxDecoration(
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
         ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -212,7 +257,9 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
                 color: item.beadColor.color,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.outline.withValues(alpha: 0.3),
                 ),
               ),
             ),
@@ -228,15 +275,16 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _importResult = null;
+      _previewItems = [];
     });
 
     try {
+      final extensions = _getAllowedExtensions();
       final result = await FilePicker.platform.pickFiles(
         dialogTitle: '选择库存文件',
         type: FileType.custom,
-        allowedExtensions: [
-          _selectedFormat == ImportFormat.csv ? 'csv' : 'json',
-        ],
+        allowedExtensions: extensions,
       );
 
       if (result != null && result.files.single.path != null) {
@@ -248,7 +296,7 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
           _fileContent = content;
         });
 
-        _parseContent(content);
+        _parseContent(content, result.files.single.name);
       }
     } catch (e) {
       setState(() {
@@ -261,83 +309,102 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
     }
   }
 
-  void _parseContent(String content) {
-    try {
-      if (_selectedFormat == ImportFormat.csv) {
-        _parseCsv(content);
-      } else {
-        _parseJson(content);
-      }
-    } catch (e) {
-      setState(() {
-        _error = '解析文件失败: $e';
-        _previewItems = [];
-      });
+  List<String> _getAllowedExtensions() {
+    switch (_selectedFormat) {
+      case ImportFormat.csv:
+        return ['csv'];
+      case ImportFormat.xlsx:
+        return ['xlsx', 'xls'];
+      case ImportFormat.json:
+        return ['json'];
     }
   }
 
-  void _parseCsv(String content) {
-    final rows = const CsvToListConverter().convert(content);
-    if (rows.isEmpty) {
-      setState(() {
-        _error = 'CSV文件为空';
-        _previewItems = [];
-      });
-      return;
-    }
-
-    final items = <InventoryItem>[];
-    bool isFirstRow = true;
-
-    for (final row in rows) {
-      if (isFirstRow) {
-        isFirstRow = false;
-        continue;
-      }
-
-      if (row.length >= 5) {
-        final color = BeadColor(
-          code: row[1].toString(),
-          name: row[2].toString(),
-          red: row.length > 5 ? (int.tryParse(row[5].toString()) ?? 128) : 128,
-          green: row.length > 6
-              ? (int.tryParse(row[6].toString()) ?? 128)
-              : 128,
-          blue: row.length > 7 ? (int.tryParse(row[7].toString()) ?? 128) : 128,
-          brand: BeadBrand.values.firstWhere(
-            (b) => b.name == row[3].toString(),
-            orElse: () => BeadBrand.generic,
-          ),
-          category: row.length > 8 ? row[8].toString() : null,
-        );
-        final quantity = int.tryParse(row[4].toString()) ?? 0;
-        items.add(
-          InventoryItem(
-            id: 'import_${DateTime.now().millisecondsSinceEpoch}_${items.length}',
-            beadColor: color,
-            quantity: quantity,
-            lastUpdated: DateTime.now(),
-          ),
-        );
-      }
-    }
+  void _parseContent(String content, String fileName) {
+    final importService = SmartImportService.instance;
+    final result = importService.parseFile(content, fileName);
 
     setState(() {
-      _previewItems = items;
-      if (items.isEmpty) {
-        _error = '未找到有效的库存数据';
+      _importResult = result;
+      _currentMappings = result.detectedColumns;
+
+      if (result.success) {
+        _previewItems = result.items;
+        if (result.items.isEmpty) {
+          _error = '未找到有效的库存数据';
+        }
+      } else if (result.needsManualMapping) {
+        _error = result.error;
+        _previewItems = [];
+      } else {
+        _error = result.error;
+        _previewItems = [];
       }
     });
   }
 
-  void _parseJson(String content) {
-    final data = jsonDecode(content) as Map<String, dynamic>;
-    final inventory = Inventory.fromJson(data);
+  Future<void> _showColumnMappingDialog() async {
+    if (_importResult == null) return;
+
+    final hasHeader = _importResult!.headers.isNotEmpty;
+    final headers = hasHeader
+        ? _importResult!.headers
+        : List.generate(
+            _importResult!.rawData.isNotEmpty
+                ? _importResult!.rawData.first.length
+                : 0,
+            (i) => '列${i + 1}',
+          );
+
+    final defaultMappings = List.generate(
+      headers.length,
+      (i) => ColumnMapping(
+        index: i,
+        type: ColumnType.unknown,
+        headerName: headers[i],
+      ),
+    );
+
+    final result = await showDialog<List<ColumnMapping>>(
+      context: context,
+      builder: (context) => ColumnMappingDialog(
+        headers: headers,
+        initialMappings: _currentMappings ?? defaultMappings,
+        sampleData: _importResult!.rawData,
+      ),
+    );
+
+    if (result != null) {
+      _applyMappings(result);
+    }
+  }
+
+  void _applyMappings(List<ColumnMapping> mappings) {
+    if (_importResult == null) return;
+
+    final importService = SmartImportService.instance;
+    final hasHeader = _importResult!.headers.isNotEmpty;
+    final dataRows = hasHeader
+        ? _importResult!.rawData.sublist(1)
+        : _importResult!.rawData;
+
+    final result = importService.parseWithMapping(dataRows, mappings);
 
     setState(() {
-      _previewItems = inventory.items;
-      if (inventory.items.isEmpty) {
-        _error = '未找到有效的库存数据';
+      _currentMappings = mappings;
+      if (result.success) {
+        _previewItems = result.items;
+        _error = null;
+        _importResult = SmartImportResult(
+          success: true,
+          items: result.items,
+          detectedColumns: mappings,
+          headers: _importResult!.headers,
+          rawData: _importResult!.rawData,
+        );
+      } else {
+        _error = result.error;
+        _previewItems = [];
       }
     });
   }
@@ -347,25 +414,26 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
 
     try {
       final inventoryProvider = context.read<InventoryProvider>();
-      ImportResult result;
+      int count = 0;
 
-      if (_selectedFormat == ImportFormat.csv) {
-        result = await inventoryProvider.importFromCsv(_fileContent!);
-      } else {
-        result = await inventoryProvider.importFromJson(_fileContent!);
+      for (final item in _previewItems) {
+        final existing = inventoryProvider.findByColorCode(item.beadColor.code);
+        if (existing != null) {
+          await inventoryProvider.updateQuantity(
+            item.beadColor.code,
+            existing.quantity + item.quantity,
+          );
+        } else {
+          await inventoryProvider.addItem(item.beadColor, item.quantity);
+        }
+        count++;
       }
 
       if (mounted) {
-        if (result.success) {
-          Navigator.of(context).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('成功导入 ${result.importedCount} 项库存')),
-          );
-        } else {
-          setState(() {
-            _error = result.message;
-          });
-        }
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('成功导入 $count 项库存')));
       }
     } catch (e) {
       setState(() {
@@ -379,4 +447,4 @@ class _ImportInventoryDialogState extends State<ImportInventoryDialog> {
   }
 }
 
-enum ImportFormat { csv, json }
+enum ImportFormat { csv, xlsx, json }

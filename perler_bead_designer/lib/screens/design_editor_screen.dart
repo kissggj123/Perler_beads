@@ -108,7 +108,7 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('新建设计'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -158,8 +158,10 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop();
+              Navigator.of(dialogContext).pop();
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
             },
             child: const Text('取消'),
           ),
@@ -188,7 +190,7 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
                 width: width,
                 height: height,
               );
-              Navigator.of(context).pop();
+              Navigator.of(dialogContext).pop();
             },
             child: const Text('创建'),
           ),

@@ -18,6 +18,19 @@ class AppProvider extends ChangeNotifier {
   bool _debugModeEnabled = false;
   bool _performanceMonitorEnabled = false;
   bool _experimentalFeaturesEnabled = false;
+  bool _showFps = false;
+  bool _showGridCoordinates = false;
+  bool _showMemoryInfo = false;
+  bool _showCacheStats = false;
+  bool _showTouchPoints = false;
+  bool _showLayoutBounds = false;
+  bool _showRepaintRainbow = false;
+  bool _enableSlowAnimations = false;
+  double _slowAnimationSpeed = 0.5;
+  bool _hiddenFeaturesEnabled = false;
+  bool _easterEggDiscovered = false;
+  bool _debugOverlayEnabled = false;
+  bool _showBead3DEffect = true;
 
   ThemeMode get themeMode => _themeMode;
   int get currentPageIndex => _currentPageIndex;
@@ -32,6 +45,19 @@ class AppProvider extends ChangeNotifier {
   bool get debugModeEnabled => _debugModeEnabled;
   bool get performanceMonitorEnabled => _performanceMonitorEnabled;
   bool get experimentalFeaturesEnabled => _experimentalFeaturesEnabled;
+  bool get showFps => _showFps;
+  bool get showGridCoordinates => _showGridCoordinates;
+  bool get showMemoryInfo => _showMemoryInfo;
+  bool get showCacheStats => _showCacheStats;
+  bool get showTouchPoints => _showTouchPoints;
+  bool get showLayoutBounds => _showLayoutBounds;
+  bool get showRepaintRainbow => _showRepaintRainbow;
+  bool get enableSlowAnimations => _enableSlowAnimations;
+  double get slowAnimationSpeed => _slowAnimationSpeed;
+  bool get hiddenFeaturesEnabled => _hiddenFeaturesEnabled;
+  bool get easterEggDiscovered => _easterEggDiscovered;
+  bool get debugOverlayEnabled => _debugOverlayEnabled;
+  bool get showBead3DEffect => _showBead3DEffect;
 
   AppProvider({SettingsService? settingsService})
     : _settingsService = settingsService ?? SettingsService();
@@ -52,6 +78,19 @@ class AppProvider extends ChangeNotifier {
         .getPerformanceMonitorEnabled();
     _experimentalFeaturesEnabled = _settingsService
         .getExperimentalFeaturesEnabled();
+    _showFps = _settingsService.getShowFps();
+    _showGridCoordinates = _settingsService.getShowGridCoordinates();
+    _showMemoryInfo = _settingsService.getShowMemoryInfo();
+    _showCacheStats = _settingsService.getShowCacheStats();
+    _showTouchPoints = _settingsService.getShowTouchPoints();
+    _showLayoutBounds = _settingsService.getShowLayoutBounds();
+    _showRepaintRainbow = _settingsService.getShowRepaintRainbow();
+    _enableSlowAnimations = _settingsService.getEnableSlowAnimations();
+    _slowAnimationSpeed = _settingsService.getSlowAnimationSpeed();
+    _hiddenFeaturesEnabled = _settingsService.getHiddenFeaturesEnabled();
+    _easterEggDiscovered = _settingsService.getEasterEggDiscovered();
+    _debugOverlayEnabled = _settingsService.getDebugOverlayEnabled();
+    _showBead3DEffect = _settingsService.getShowBead3DEffect();
     _initialized = true;
     notifyListeners();
   }
@@ -141,6 +180,97 @@ class AppProvider extends ChangeNotifier {
     if (_experimentalFeaturesEnabled == enabled) return;
     _experimentalFeaturesEnabled = enabled;
     await _settingsService.setExperimentalFeaturesEnabled(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setShowFps(bool enabled) async {
+    if (_showFps == enabled) return;
+    _showFps = enabled;
+    await _settingsService.setShowFps(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setShowGridCoordinates(bool enabled) async {
+    if (_showGridCoordinates == enabled) return;
+    _showGridCoordinates = enabled;
+    await _settingsService.setShowGridCoordinates(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setShowMemoryInfo(bool enabled) async {
+    if (_showMemoryInfo == enabled) return;
+    _showMemoryInfo = enabled;
+    await _settingsService.setShowMemoryInfo(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setShowCacheStats(bool enabled) async {
+    if (_showCacheStats == enabled) return;
+    _showCacheStats = enabled;
+    await _settingsService.setShowCacheStats(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setShowTouchPoints(bool enabled) async {
+    if (_showTouchPoints == enabled) return;
+    _showTouchPoints = enabled;
+    await _settingsService.setShowTouchPoints(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setShowLayoutBounds(bool enabled) async {
+    if (_showLayoutBounds == enabled) return;
+    _showLayoutBounds = enabled;
+    await _settingsService.setShowLayoutBounds(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setShowRepaintRainbow(bool enabled) async {
+    if (_showRepaintRainbow == enabled) return;
+    _showRepaintRainbow = enabled;
+    await _settingsService.setShowRepaintRainbow(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setEnableSlowAnimations(bool enabled) async {
+    if (_enableSlowAnimations == enabled) return;
+    _enableSlowAnimations = enabled;
+    await _settingsService.setEnableSlowAnimations(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setSlowAnimationSpeed(double speed) async {
+    if (_slowAnimationSpeed == speed) return;
+    _slowAnimationSpeed = speed;
+    await _settingsService.setSlowAnimationSpeed(speed);
+    notifyListeners();
+  }
+
+  Future<void> setHiddenFeaturesEnabled(bool enabled) async {
+    if (_hiddenFeaturesEnabled == enabled) return;
+    _hiddenFeaturesEnabled = enabled;
+    await _settingsService.setHiddenFeaturesEnabled(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setEasterEggDiscovered(bool discovered) async {
+    if (_easterEggDiscovered == discovered) return;
+    _easterEggDiscovered = discovered;
+    await _settingsService.setEasterEggDiscovered(discovered);
+    notifyListeners();
+  }
+
+  Future<void> setDebugOverlayEnabled(bool enabled) async {
+    if (_debugOverlayEnabled == enabled) return;
+    _debugOverlayEnabled = enabled;
+    await _settingsService.setDebugOverlayEnabled(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setShowBead3DEffect(bool enabled) async {
+    if (_showBead3DEffect == enabled) return;
+    _showBead3DEffect = enabled;
+    await _settingsService.setShowBead3DEffect(enabled);
     notifyListeners();
   }
 }

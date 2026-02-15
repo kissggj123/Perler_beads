@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../providers/design_editor_provider.dart';
+import '../providers/app_provider.dart';
 
 class BeadCanvasWidget extends StatefulWidget {
   final double cellSize;
@@ -99,8 +100,8 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<DesignEditorProvider>(
-      builder: (context, provider, child) {
+    return Consumer2<DesignEditorProvider, AppProvider>(
+      builder: (context, provider, appProvider, child) {
         final design = provider.currentDesign;
 
         if (design == null) {
@@ -193,7 +194,9 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
                     cellSize: widget.cellSize,
                     showGrid: provider.showGrid,
                     showCoordinates: provider.showCoordinates,
+                    showColorCodes: provider.showColorCodes,
                     selectedTool: provider.toolMode,
+                    show3DEffect: appProvider.showBead3DEffect,
                   ),
                 ),
               ),
@@ -210,14 +213,18 @@ class BeadCanvasPainter extends CustomPainter {
   final double cellSize;
   final bool showGrid;
   final bool showCoordinates;
+  final bool showColorCodes;
   final ToolMode selectedTool;
+  final bool show3DEffect;
 
   BeadCanvasPainter({
     required this.design,
     required this.cellSize,
     required this.showGrid,
     required this.showCoordinates,
+    required this.showColorCodes,
     required this.selectedTool,
+    required this.show3DEffect,
   });
 
   @override
@@ -229,6 +236,9 @@ class BeadCanvasPainter extends CustomPainter {
     }
     if (showCoordinates && cellSize >= 12) {
       _drawCoordinates(canvas);
+    }
+    if (showColorCodes && cellSize >= 18) {
+      _drawColorCodes(canvas);
     }
   }
 
@@ -256,31 +266,33 @@ class BeadCanvasPainter extends CustomPainter {
             ..style = PaintingStyle.fill;
           canvas.drawRect(rect, paint);
 
-          final highlightPaint = Paint()
-            ..color = Colors.white.withValues(alpha: 0.3)
-            ..style = PaintingStyle.fill;
-          canvas.drawRect(
-            Rect.fromLTWH(
-              rect.left,
-              rect.top,
-              rect.width * 0.4,
-              rect.height * 0.4,
-            ),
-            highlightPaint,
-          );
+          if (show3DEffect) {
+            final highlightPaint = Paint()
+              ..color = Colors.white.withValues(alpha: 0.3)
+              ..style = PaintingStyle.fill;
+            canvas.drawRect(
+              Rect.fromLTWH(
+                rect.left,
+                rect.top,
+                rect.width * 0.4,
+                rect.height * 0.4,
+              ),
+              highlightPaint,
+            );
 
-          final shadowPaint = Paint()
-            ..color = Colors.black.withValues(alpha: 0.2)
-            ..style = PaintingStyle.fill;
-          canvas.drawRect(
-            Rect.fromLTWH(
-              rect.left + rect.width * 0.6,
-              rect.top + rect.height * 0.6,
-              rect.width * 0.4,
-              rect.height * 0.4,
-            ),
-            shadowPaint,
-          );
+            final shadowPaint = Paint()
+              ..color = Colors.black.withValues(alpha: 0.2)
+              ..style = PaintingStyle.fill;
+            canvas.drawRect(
+              Rect.fromLTWH(
+                rect.left + rect.width * 0.6,
+                rect.top + rect.height * 0.6,
+                rect.width * 0.4,
+                rect.height * 0.4,
+              ),
+              shadowPaint,
+            );
+          }
         } else {
           final paint = Paint()
             ..color = Colors.white
@@ -371,12 +383,45 @@ class BeadCanvasPainter extends CustomPainter {
     }
   }
 
+  void _drawColorCodes(Canvas canvas) {
+    final textPainter = TextPainter(
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+    );
+
+    final fontSize = cellSize * 0.35;
+
+    for (int y = 0; y < design.height; y++) {
+      for (int x = 0; x < design.width; x++) {
+        final bead = design.getBead(x, y);
+        if (bead == null) continue;
+
+        final textColor = bead.isLight ? Colors.black87 : Colors.white;
+        final textStyle = TextStyle(
+          color: textColor,
+          fontSize: fontSize,
+          fontWeight: FontWeight.w500,
+        );
+
+        textPainter.text = TextSpan(text: bead.code, style: textStyle);
+        textPainter.layout();
+
+        final centerX = x * cellSize + cellSize / 2 - textPainter.width / 2;
+        final centerY = y * cellSize + cellSize / 2 - textPainter.height / 2;
+
+        textPainter.paint(canvas, Offset(centerX, centerY));
+      }
+    }
+  }
+
   @override
   bool shouldRepaint(covariant BeadCanvasPainter oldDelegate) {
     return oldDelegate.design != design ||
         oldDelegate.cellSize != cellSize ||
         oldDelegate.showGrid != showGrid ||
         oldDelegate.showCoordinates != showCoordinates ||
-        oldDelegate.selectedTool != selectedTool;
+        oldDelegate.showColorCodes != showColorCodes ||
+        oldDelegate.selectedTool != selectedTool ||
+        oldDelegate.show3DEffect != show3DEffect;
   }
 }

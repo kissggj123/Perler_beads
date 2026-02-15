@@ -26,6 +26,7 @@ class DesignEditorProvider extends ChangeNotifier {
   ToolMode _toolMode = ToolMode.draw;
   bool _showGrid = true;
   bool _showCoordinates = false;
+  bool _showColorCodes = false;
   bool _isDirty = false;
   bool _hasEverBeenSaved = false;
 
@@ -43,6 +44,7 @@ class DesignEditorProvider extends ChangeNotifier {
   ToolMode get toolMode => _toolMode;
   bool get showGrid => _showGrid;
   bool get showCoordinates => _showCoordinates;
+  bool get showColorCodes => _showColorCodes;
   bool get isDirty => _isDirty || (!_hasEverBeenSaved && _currentDesign != null);
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
@@ -140,6 +142,11 @@ class DesignEditorProvider extends ChangeNotifier {
 
   void toggleCoordinates() {
     _showCoordinates = !_showCoordinates;
+    notifyListeners();
+  }
+
+  void toggleColorCodes() {
+    _showColorCodes = !_showColorCodes;
     notifyListeners();
   }
 

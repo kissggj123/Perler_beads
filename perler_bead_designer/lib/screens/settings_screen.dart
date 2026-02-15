@@ -21,7 +21,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   static const String appName = '兔可可的拼豆世界';
-  static const String appVersion = '1.1.0';
+  static const String appVersion = '1.1.2';
   static const String developer = 'BunnyCC';
   static const String copyright =
       'Copyright © 2026 BunnyCC. All rights reserved.';
@@ -364,12 +364,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildCustomizationSection(BuildContext context) {
+    final appProvider = context.watch<AppProvider>();
     final colorScheme = Theme.of(context).colorScheme;
 
     return _SettingsCard(
       title: '自定义设置',
       icon: Icons.tune,
       children: [
+        SwitchListTile(
+          secondary: Icon(Icons.view_in_ar, color: colorScheme.primary),
+          title: const Text('显示拼豆立体效果'),
+          subtitle: const Text('为拼豆添加高光和阴影效果'),
+          value: appProvider.showBead3DEffect,
+          onChanged: (value) {
+            appProvider.setShowBead3DEffect(value);
+          },
+        ),
+        const Divider(),
         ListTile(
           leading: Icon(Icons.grid_4x4, color: colorScheme.primary),
           title: const Text('默认画布尺寸'),
@@ -518,6 +529,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           leading: Icon(Icons.person, color: colorScheme.primary),
           title: const Text('开发者'),
           subtitle: const Text(developer),
+          onLongPress: () => _showEasterEgg(context),
         ),
         ListTile(
           leading: Icon(Icons.copyright, color: colorScheme.secondary),
@@ -593,6 +605,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _showEasterEgg(BuildContext context) {
+    final appProvider = context.read<AppProvider>();
+
+    if (!appProvider.easterEggDiscovered) {
+      appProvider.setEasterEggDiscovered(true);
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.auto_awesome, color: Colors.amber),
+            const SizedBox(width: 8),
+            const Text('恭喜发现彩蛋！'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('🐰 你发现了隐藏的彩蛋功能！'),
+            const SizedBox(height: 16),
+            const Text('感谢使用兔可可的拼豆世界！'),
+            const SizedBox(height: 8),
+            Text(
+              '开发者: $developer',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
+            if (!appProvider.hiddenFeaturesEnabled) ...[
+              const Divider(),
+              const Text('是否启用隐藏功能？'),
+              const SizedBox(height: 8),
+              const Text('隐藏功能包含一些实验性的开发者工具。', style: TextStyle(fontSize: 12)),
+            ],
+          ],
+        ),
+        actions: [
+          if (!appProvider.hiddenFeaturesEnabled)
+            TextButton(
+              onPressed: () {
+                appProvider.setHiddenFeaturesEnabled(true);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(
+                    content: Text('隐藏功能已启用！'),
+                    backgroundColor: Colors.purple,
+                  ),
+                );
+              },
+              child: const Text('启用隐藏功能'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildGodModeSection(BuildContext context) {
     final appProvider = context.watch<AppProvider>();
     final colorScheme = Theme.of(context).colorScheme;
@@ -621,32 +694,100 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
-        SwitchListTile(
-          secondary: Icon(Icons.bug_report, color: colorScheme.primary),
-          title: const Text('调试模式'),
-          subtitle: const Text('启用详细日志和调试信息'),
-          value: appProvider.debugModeEnabled,
-          onChanged: (value) {
-            appProvider.setDebugModeEnabled(value);
-          },
-        ),
-        SwitchListTile(
-          secondary: Icon(Icons.monitor_heart, color: colorScheme.secondary),
-          title: const Text('性能监控'),
-          subtitle: const Text('显示实时性能指标'),
-          value: appProvider.performanceMonitorEnabled,
-          onChanged: (value) {
-            appProvider.setPerformanceMonitorEnabled(value);
-            setState(() {
-              _showPerformanceMonitor = value;
-            });
-            if (value) {
-              _performanceService.startMonitoring();
-            } else {
-              _performanceService.stopMonitoring();
-            }
-          },
-        ),
+        _buildGodModeSubSection('调试选项', Icons.bug_report, [
+          SwitchListTile(
+            secondary: Icon(Icons.bug_report, color: colorScheme.primary),
+            title: const Text('调试模式'),
+            subtitle: const Text('启用详细日志和调试信息'),
+            value: appProvider.debugModeEnabled,
+            onChanged: (value) {
+              appProvider.setDebugModeEnabled(value);
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.layers, color: colorScheme.secondary),
+            title: const Text('调试覆盖层'),
+            subtitle: const Text('在界面上显示调试信息覆盖层'),
+            value: appProvider.debugOverlayEnabled,
+            onChanged: (value) {
+              appProvider.setDebugOverlayEnabled(value);
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.touch_app, color: colorScheme.tertiary),
+            title: const Text('显示触摸点'),
+            subtitle: const Text('在屏幕上显示触摸位置'),
+            value: appProvider.showTouchPoints,
+            onChanged: (value) {
+              appProvider.setShowTouchPoints(value);
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.border_outer, color: colorScheme.primary),
+            title: const Text('显示布局边界'),
+            subtitle: const Text('显示所有组件的布局边界'),
+            value: appProvider.showLayoutBounds,
+            onChanged: (value) {
+              appProvider.setShowLayoutBounds(value);
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.palette, color: colorScheme.secondary),
+            title: const Text('重绘彩虹'),
+            subtitle: const Text('显示重绘区域的彩虹效果'),
+            value: appProvider.showRepaintRainbow,
+            onChanged: (value) {
+              appProvider.setShowRepaintRainbow(value);
+            },
+          ),
+        ]),
+        const Divider(),
+        _buildGodModeSubSection('性能监控', Icons.speed, [
+          SwitchListTile(
+            secondary: Icon(Icons.monitor_heart, color: colorScheme.primary),
+            title: const Text('性能监控'),
+            subtitle: const Text('显示实时性能指标'),
+            value: appProvider.performanceMonitorEnabled,
+            onChanged: (value) {
+              appProvider.setPerformanceMonitorEnabled(value);
+              setState(() {
+                _showPerformanceMonitor = value;
+              });
+              if (value) {
+                _performanceService.startMonitoring();
+              } else {
+                _performanceService.stopMonitoring();
+              }
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.speed, color: colorScheme.secondary),
+            title: const Text('显示 FPS'),
+            subtitle: const Text('在屏幕角落显示实时帧率'),
+            value: appProvider.showFps,
+            onChanged: (value) {
+              appProvider.setShowFps(value);
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.memory, color: colorScheme.tertiary),
+            title: const Text('显示内存信息'),
+            subtitle: const Text('显示当前内存使用情况'),
+            value: appProvider.showMemoryInfo,
+            onChanged: (value) {
+              appProvider.setShowMemoryInfo(value);
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.storage, color: colorScheme.primary),
+            title: const Text('显示缓存统计'),
+            subtitle: const Text('显示图片和数据缓存使用情况'),
+            value: appProvider.showCacheStats,
+            onChanged: (value) {
+              appProvider.setShowCacheStats(value);
+            },
+          ),
+        ]),
         if (_showPerformanceMonitor) ...[
           const Divider(),
           Padding(
@@ -656,15 +797,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
-        SwitchListTile(
-          secondary: Icon(Icons.science, color: colorScheme.tertiary),
-          title: const Text('实验性功能'),
-          subtitle: const Text('启用未稳定的新功能'),
-          value: appProvider.experimentalFeaturesEnabled,
-          onChanged: (value) {
-            appProvider.setExperimentalFeaturesEnabled(value);
-          },
-        ),
+        const Divider(),
+        _buildGodModeSubSection('画布调试', Icons.grid_on, [
+          SwitchListTile(
+            secondary: Icon(Icons.grid_4x4, color: colorScheme.primary),
+            title: const Text('显示网格坐标'),
+            subtitle: const Text('在画布上显示网格坐标信息'),
+            value: appProvider.showGridCoordinates,
+            onChanged: (value) {
+              appProvider.setShowGridCoordinates(value);
+            },
+          ),
+        ]),
+        const Divider(),
+        _buildGodModeSubSection('动画控制', Icons.animation, [
+          SwitchListTile(
+            secondary: Icon(
+              Icons.slow_motion_video,
+              color: colorScheme.primary,
+            ),
+            title: const Text('慢速动画'),
+            subtitle: const Text('以慢速播放所有动画便于调试'),
+            value: appProvider.enableSlowAnimations,
+            onChanged: (value) {
+              appProvider.setEnableSlowAnimations(value);
+            },
+          ),
+          if (appProvider.enableSlowAnimations)
+            ListTile(
+              leading: Icon(Icons.speed, color: colorScheme.secondary),
+              title: const Text('动画速度'),
+              subtitle: Slider(
+                value: appProvider.slowAnimationSpeed,
+                min: 0.1,
+                max: 1.0,
+                divisions: 9,
+                label: '${(appProvider.slowAnimationSpeed * 100).toInt()}%',
+                onChanged: (value) {
+                  appProvider.setSlowAnimationSpeed(value);
+                },
+              ),
+            ),
+          SwitchListTile(
+            secondary: Icon(Icons.animation, color: colorScheme.tertiary),
+            title: const Text('全局动画开关'),
+            subtitle: const Text('控制所有界面动画效果'),
+            value: appProvider.animationsEnabled,
+            onChanged: (value) {
+              appProvider.setAnimationsEnabled(value);
+            },
+          ),
+        ]),
+        const Divider(),
+        _buildGodModeSubSection('实验性功能', Icons.science, [
+          SwitchListTile(
+            secondary: Icon(Icons.science, color: colorScheme.primary),
+            title: const Text('实验性功能'),
+            subtitle: const Text('启用未稳定的新功能'),
+            value: appProvider.experimentalFeaturesEnabled,
+            onChanged: (value) {
+              appProvider.setExperimentalFeaturesEnabled(value);
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.auto_awesome, color: colorScheme.secondary),
+            title: const Text('隐藏功能'),
+            subtitle: const Text('启用隐藏的开发者功能'),
+            value: appProvider.hiddenFeaturesEnabled,
+            onChanged: (value) {
+              appProvider.setHiddenFeaturesEnabled(value);
+            },
+          ),
+        ]),
         const Divider(),
         ListTile(
           leading: Icon(Icons.speed, color: colorScheme.primary),
@@ -674,25 +878,187 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onTap: () => _showGodModePerformanceSettings(context),
         ),
         ListTile(
-          leading: Icon(Icons.animation, color: colorScheme.secondary),
-          title: const Text('动画控制'),
-          subtitle: const Text('全局动画效果开关'),
-          trailing: Switch(
-            value: appProvider.animationsEnabled,
-            onChanged: (value) {
-              appProvider.setAnimationsEnabled(value);
-            },
-          ),
-        ),
-        const Divider(),
-        ListTile(
           leading: Icon(Icons.developer_mode, color: colorScheme.tertiary),
           title: const Text('开发者选项'),
           subtitle: const Text('查看应用内部状态'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showDeveloperOptions(context),
         ),
+        ListTile(
+          leading: Icon(Icons.file_download, color: colorScheme.secondary),
+          title: const Text('导出调试信息'),
+          subtitle: const Text('导出应用状态和日志'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _exportDebugInfo(context),
+        ),
+        ListTile(
+          leading: Icon(Icons.refresh, color: colorScheme.error),
+          title: Text('重置上帝模式设置', style: TextStyle(color: colorScheme.error)),
+          subtitle: const Text('重置所有上帝模式选项为默认值'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showResetGodModeDialog(context),
+        ),
       ],
+    );
+  }
+
+  Widget _buildGodModeSubSection(
+    String title,
+    IconData icon,
+    List<Widget> children,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...children,
+      ],
+    );
+  }
+
+  void _exportDebugInfo(BuildContext context) async {
+    final appProvider = context.read<AppProvider>();
+    final settingsService = SettingsService();
+    final storageService = StorageService();
+
+    final debugInfo = {
+      'timestamp': DateTime.now().toIso8601String(),
+      'appVersion': appVersion,
+      'platform': Platform.operatingSystem,
+      'godModeSettings': {
+        'godModeEnabled': appProvider.godModeEnabled,
+        'debugModeEnabled': appProvider.debugModeEnabled,
+        'performanceMonitorEnabled': appProvider.performanceMonitorEnabled,
+        'experimentalFeaturesEnabled': appProvider.experimentalFeaturesEnabled,
+        'showFps': appProvider.showFps,
+        'showGridCoordinates': appProvider.showGridCoordinates,
+        'showMemoryInfo': appProvider.showMemoryInfo,
+        'showCacheStats': appProvider.showCacheStats,
+        'showTouchPoints': appProvider.showTouchPoints,
+        'showLayoutBounds': appProvider.showLayoutBounds,
+        'showRepaintRainbow': appProvider.showRepaintRainbow,
+        'enableSlowAnimations': appProvider.enableSlowAnimations,
+        'slowAnimationSpeed': appProvider.slowAnimationSpeed,
+        'hiddenFeaturesEnabled': appProvider.hiddenFeaturesEnabled,
+        'easterEggDiscovered': appProvider.easterEggDiscovered,
+        'debugOverlayEnabled': appProvider.debugOverlayEnabled,
+      },
+      'appSettings': {
+        'themeMode': appProvider.themeMode.name,
+        'animationsEnabled': appProvider.animationsEnabled,
+        'pageTransitionsEnabled': appProvider.pageTransitionsEnabled,
+        'listAnimationsEnabled': appProvider.listAnimationsEnabled,
+        'buttonAnimationsEnabled': appProvider.buttonAnimationsEnabled,
+        'cardAnimationsEnabled': appProvider.cardAnimationsEnabled,
+      },
+      'performanceSettings': {
+        'gpuAcceleration': _performanceService.config.enableGpuAcceleration,
+        'performanceLevel': _performanceService.config.performanceLevel.name,
+        'renderEngine': PerformanceService.getImpellerStatus(),
+      },
+      'storageInfo': {
+        'dataPath': storageService.dataDirectoryPath,
+        'settingsInitialized': settingsService.containsKey('theme_mode'),
+      },
+    };
+
+    final jsonString = const JsonEncoder.withIndent('  ').convert(debugInfo);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('调试信息'),
+        content: SizedBox(
+          width: 400,
+          height: 400,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              jsonString,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: jsonString));
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
+            },
+            child: const Text('复制'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showResetGodModeDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重置上帝模式设置'),
+        content: const Text('确定要重置所有上帝模式选项为默认值吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () async {
+              final appProvider = this.context.read<AppProvider>();
+              await appProvider.setDebugModeEnabled(false);
+              await appProvider.setPerformanceMonitorEnabled(false);
+              await appProvider.setExperimentalFeaturesEnabled(false);
+              await appProvider.setShowFps(false);
+              await appProvider.setShowGridCoordinates(false);
+              await appProvider.setShowMemoryInfo(false);
+              await appProvider.setShowCacheStats(false);
+              await appProvider.setShowTouchPoints(false);
+              await appProvider.setShowLayoutBounds(false);
+              await appProvider.setShowRepaintRainbow(false);
+              await appProvider.setEnableSlowAnimations(false);
+              await appProvider.setSlowAnimationSpeed(0.5);
+              await appProvider.setHiddenFeaturesEnabled(false);
+              await appProvider.setDebugOverlayEnabled(false);
+
+              Navigator.pop(context);
+              if (mounted) {
+                ScaffoldMessenger.of(
+                  this.context,
+                ).showSnackBar(const SnackBar(content: Text('上帝模式设置已重置')));
+              }
+            },
+            child: const Text('重置'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -717,8 +1083,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: _performanceService.config.enableGpuAcceleration,
                   onChanged: (value) async {
                     await _performanceService.setEnableGpuAcceleration(value);
-                    Navigator.pop(context);
-                    _showGodModePerformanceSettings(context);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      _showGodModePerformanceSettings(this.context);
+                    }
                   },
                 ),
               ),
@@ -769,7 +1137,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '应用状态',
+                '上帝模式状态',
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -784,10 +1152,91 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 appProvider.debugModeEnabled ? '启用' : '禁用',
               ),
               _buildDeveloperInfoRow(
+                '调试覆盖层',
+                appProvider.debugOverlayEnabled ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '隐藏功能',
+                appProvider.hiddenFeaturesEnabled ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '彩蛋已发现',
+                appProvider.easterEggDiscovered ? '是' : '否',
+              ),
+              const Divider(),
+              Text(
+                '显示选项',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _buildDeveloperInfoRow(
+                'FPS 显示',
+                appProvider.showFps ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '网格坐标',
+                appProvider.showGridCoordinates ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '内存信息',
+                appProvider.showMemoryInfo ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '缓存统计',
+                appProvider.showCacheStats ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '触摸点',
+                appProvider.showTouchPoints ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '布局边界',
+                appProvider.showLayoutBounds ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '重绘彩虹',
+                appProvider.showRepaintRainbow ? '启用' : '禁用',
+              ),
+              const Divider(),
+              Text(
+                '动画设置',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _buildDeveloperInfoRow(
                 '动画状态',
                 appProvider.animationsEnabled ? '启用' : '禁用',
               ),
+              _buildDeveloperInfoRow(
+                '慢速动画',
+                appProvider.enableSlowAnimations ? '启用' : '禁用',
+              ),
+              if (appProvider.enableSlowAnimations)
+                _buildDeveloperInfoRow(
+                  '动画速度',
+                  '${(appProvider.slowAnimationSpeed * 100).toInt()}%',
+                ),
+              const Divider(),
+              Text(
+                '应用设置',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
               _buildDeveloperInfoRow('主题模式', appProvider.themeMode.name),
+              _buildDeveloperInfoRow(
+                '页面切换动画',
+                appProvider.pageTransitionsEnabled ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '列表动画',
+                appProvider.listAnimationsEnabled ? '启用' : '禁用',
+              ),
               const Divider(),
               Text(
                 '存储信息',
@@ -821,6 +1270,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildDeveloperInfoRow(
                 '渲染引擎',
                 PerformanceService.getImpellerStatus(),
+              ),
+              const Divider(),
+              Text(
+                '实验性功能',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _buildDeveloperInfoRow(
+                '实验性功能',
+                appProvider.experimentalFeaturesEnabled ? '启用' : '禁用',
               ),
             ],
           ),
@@ -1345,8 +1806,9 @@ class _ChangelogDialogState extends State<ChangelogDialog> {
         'assets/changelog.json',
       );
       final Map<String, dynamic> data = json.decode(content);
+      final allVersions = data['versions'] as List? ?? [];
       setState(() {
-        _versions = data['versions'] ?? [];
+        _versions = allVersions.take(8).toList();
         _isLoading = false;
       });
     } catch (e) {

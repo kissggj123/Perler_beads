@@ -222,6 +222,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
   ) {
     return Column(
       children: [
+        if (provider.warningMessage != null)
+          _buildWarningBanner(context, provider),
         Expanded(
           child: SingleChildScrollView(
             controller: _scrollController,
@@ -283,6 +285,49 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildWarningBanner(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.tertiaryContainer,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 20,
+            color: Theme.of(context).colorScheme.onTertiaryContainer,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              provider.warningMessage!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onTertiaryContainer,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: provider.clearWarning,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            color: Theme.of(context).colorScheme.onTertiaryContainer,
+          ),
+        ],
+      ),
     );
   }
 
@@ -796,10 +841,6 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     );
 
     if (design != null && mounted) {
-      if (widget.onDesignCreated != null) {
-        widget.onDesignCreated!(design);
-      }
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -814,7 +855,11 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
         ),
       );
 
-      Navigator.of(context).pop(design);
+      if (widget.onDesignCreated != null) {
+        widget.onDesignCreated!(design);
+      } else {
+        Navigator.of(context).pop(design);
+      }
     } else if (mounted && provider.errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

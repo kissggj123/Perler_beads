@@ -25,6 +25,19 @@ class SettingsService {
       'performance_monitor_enabled';
   static const String _experimentalFeaturesEnabledKey =
       'experimental_features_enabled';
+  static const String _showFpsKey = 'show_fps';
+  static const String _showGridCoordinatesKey = 'show_grid_coordinates';
+  static const String _showMemoryInfoKey = 'show_memory_info';
+  static const String _showCacheStatsKey = 'show_cache_stats';
+  static const String _showTouchPointsKey = 'show_touch_points';
+  static const String _showLayoutBoundsKey = 'show_layout_bounds';
+  static const String _showRepaintRainbowKey = 'show_repaint_rainbow';
+  static const String _enableSlowAnimationsKey = 'enable_slow_animations';
+  static const String _slowAnimationSpeedKey = 'slow_animation_speed';
+  static const String _hiddenFeaturesEnabledKey = 'hidden_features_enabled';
+  static const String _easterEggDiscoveredKey = 'easter_egg_discovered';
+  static const String _debugOverlayEnabledKey = 'debug_overlay_enabled';
+  static const String _showBead3DEffectKey = 'show_bead_3d_effect';
 
   SharedPreferences? _prefs;
 
@@ -268,5 +281,109 @@ class SettingsService {
 
   Future<void> setExperimentalFeaturesEnabled(bool value) async {
     await prefs.setBool(_experimentalFeaturesEnabledKey, value);
+  }
+
+  bool getShowFps() {
+    return prefs.getBool(_showFpsKey) ?? false;
+  }
+
+  Future<void> setShowFps(bool value) async {
+    await prefs.setBool(_showFpsKey, value);
+  }
+
+  bool getShowGridCoordinates() {
+    return prefs.getBool(_showGridCoordinatesKey) ?? false;
+  }
+
+  Future<void> setShowGridCoordinates(bool value) async {
+    await prefs.setBool(_showGridCoordinatesKey, value);
+  }
+
+  bool getShowMemoryInfo() {
+    return prefs.getBool(_showMemoryInfoKey) ?? false;
+  }
+
+  Future<void> setShowMemoryInfo(bool value) async {
+    await prefs.setBool(_showMemoryInfoKey, value);
+  }
+
+  bool getShowCacheStats() {
+    return prefs.getBool(_showCacheStatsKey) ?? false;
+  }
+
+  Future<void> setShowCacheStats(bool value) async {
+    await prefs.setBool(_showCacheStatsKey, value);
+  }
+
+  bool getShowTouchPoints() {
+    return prefs.getBool(_showTouchPointsKey) ?? false;
+  }
+
+  Future<void> setShowTouchPoints(bool value) async {
+    await prefs.setBool(_showTouchPointsKey, value);
+  }
+
+  bool getShowLayoutBounds() {
+    return prefs.getBool(_showLayoutBoundsKey) ?? false;
+  }
+
+  Future<void> setShowLayoutBounds(bool value) async {
+    await prefs.setBool(_showLayoutBoundsKey, value);
+  }
+
+  bool getShowRepaintRainbow() {
+    return prefs.getBool(_showRepaintRainbowKey) ?? false;
+  }
+
+  Future<void> setShowRepaintRainbow(bool value) async {
+    await prefs.setBool(_showRepaintRainbowKey, value);
+  }
+
+  bool getEnableSlowAnimations() {
+    return prefs.getBool(_enableSlowAnimationsKey) ?? false;
+  }
+
+  Future<void> setEnableSlowAnimations(bool value) async {
+    await prefs.setBool(_enableSlowAnimationsKey, value);
+  }
+
+  double getSlowAnimationSpeed() {
+    return prefs.getDouble(_slowAnimationSpeedKey) ?? 0.5;
+  }
+
+  Future<void> setSlowAnimationSpeed(double value) async {
+    await prefs.setDouble(_slowAnimationSpeedKey, value);
+  }
+
+  bool getHiddenFeaturesEnabled() {
+    return prefs.getBool(_hiddenFeaturesEnabledKey) ?? false;
+  }
+
+  Future<void> setHiddenFeaturesEnabled(bool value) async {
+    await prefs.setBool(_hiddenFeaturesEnabledKey, value);
+  }
+
+  bool getEasterEggDiscovered() {
+    return prefs.getBool(_easterEggDiscoveredKey) ?? false;
+  }
+
+  Future<void> setEasterEggDiscovered(bool value) async {
+    await prefs.setBool(_easterEggDiscoveredKey, value);
+  }
+
+  bool getDebugOverlayEnabled() {
+    return prefs.getBool(_debugOverlayEnabledKey) ?? false;
+  }
+
+  Future<void> setDebugOverlayEnabled(bool value) async {
+    await prefs.setBool(_debugOverlayEnabledKey, value);
+  }
+
+  bool getShowBead3DEffect() {
+    return prefs.getBool(_showBead3DEffectKey) ?? true;
+  }
+
+  Future<void> setShowBead3DEffect(bool value) async {
+    await prefs.setBool(_showBead3DEffectKey, value);
   }
 }

@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import '../models/bead_color.dart';
@@ -11,6 +13,20 @@ import '../models/color_palette.dart';
 enum DitheringMode { none, floydSteinberg, ordered }
 
 enum AlgorithmStyle { pixelArt, cartoon, realistic }
+
+class ImageLoadResult {
+  final img.Image image;
+  final int originalWidth;
+  final int originalHeight;
+  final bool wasResized;
+
+  ImageLoadResult({
+    required this.image,
+    required this.originalWidth,
+    required this.originalHeight,
+    required this.wasResized,
+  });
+}
 
 extension AlgorithmStyleExtension on AlgorithmStyle {
   String get displayName {
@@ -37,6 +53,150 @@ extension AlgorithmStyleExtension on AlgorithmStyle {
 }
 
 class ImageProcessingService {
+  static const int maxImageDimension = 4096;
+  static const int preferredMaxDimension = 2048;
+  static const int maxPixelsForProcessing = 4000000;
+
+  Future<ImageLoadResult?> loadImageWithResize(
+    File file, {
+    int maxDimension = preferredMaxDimension,
+    bool useIsolate = true,
+  }) async {
+    try {
+      final bytes = await file.readAsBytes();
+
+      if (useIsolate && bytes.length > 2 * 1024 * 1024) {
+        return await _loadImageWithResizeInIsolate(bytes, maxDimension);
+      }
+
+      return _processImageBytes(bytes, maxDimension);
+    } catch (e) {
+      debugPrint('Error loading image: $e');
+      return null;
+    }
+  }
+
+  Future<ImageLoadResult?> _loadImageWithResizeInIsolate(
+    Uint8List bytes,
+    int maxDimension,
+  ) async {
+    final receivePort = ReceivePort();
+
+    await Isolate.spawn(
+      _isolateImageProcessor,
+      _IsolateData(
+        sendPort: receivePort.sendPort,
+        bytes: bytes,
+        maxDimension: maxDimension,
+      ),
+    );
+
+    final result = await receivePort.first as Map<String, dynamic>?;
+    receivePort.close();
+
+    if (result == null) return null;
+
+    return ImageLoadResult(
+      image: result['image'] as img.Image,
+      originalWidth: result['originalWidth'] as int,
+      originalHeight: result['originalHeight'] as int,
+      wasResized: result['wasResized'] as bool,
+    );
+  }
+
+  static void _isolateImageProcessor(_IsolateData data) {
+    final result = _processImageBytesStatic(data.bytes, data.maxDimension);
+    data.sendPort.send(result);
+  }
+
+  static Map<String, dynamic>? _processImageBytesStatic(
+    Uint8List bytes,
+    int maxDimension,
+  ) {
+    final decodedImage = img.decodeImage(bytes);
+    if (decodedImage == null) return null;
+
+    final originalWidth = decodedImage.width;
+    final originalHeight = decodedImage.height;
+
+    bool wasResized = false;
+    img.Image processedImage = decodedImage;
+
+    if (originalWidth > maxDimension || originalHeight > maxDimension) {
+      final aspectRatio = originalWidth / originalHeight;
+      int newWidth, newHeight;
+
+      if (aspectRatio > 1) {
+        newWidth = maxDimension;
+        newHeight = (maxDimension / aspectRatio).round();
+      } else {
+        newHeight = maxDimension;
+        newWidth = (maxDimension * aspectRatio).round();
+      }
+
+      processedImage = img.copyResize(
+        decodedImage,
+        width: newWidth,
+        height: newHeight,
+        interpolation: img.Interpolation.average,
+      );
+      wasResized = true;
+    }
+
+    return {
+      'image': processedImage,
+      'originalWidth': originalWidth,
+      'originalHeight': originalHeight,
+      'wasResized': wasResized,
+    };
+  }
+
+  ImageLoadResult? _processImageBytes(Uint8List bytes, int maxDimension) {
+    final decodedImage = img.decodeImage(bytes);
+
+    if (decodedImage == null) {
+      return null;
+    }
+
+    final originalWidth = decodedImage.width;
+    final originalHeight = decodedImage.height;
+    final totalPixels = originalWidth * originalHeight;
+
+    bool wasResized = false;
+    img.Image processedImage = decodedImage;
+
+    if (originalWidth > maxDimension || originalHeight > maxDimension) {
+      final aspectRatio = originalWidth / originalHeight;
+      int newWidth, newHeight;
+
+      if (aspectRatio > 1) {
+        newWidth = maxDimension;
+        newHeight = (maxDimension / aspectRatio).round();
+      } else {
+        newHeight = maxDimension;
+        newWidth = (maxDimension * aspectRatio).round();
+      }
+
+      processedImage = img.copyResize(
+        decodedImage,
+        width: newWidth,
+        height: newHeight,
+        interpolation: img.Interpolation.average,
+      );
+      wasResized = true;
+      debugPrint(
+        'Image resized from ${originalWidth}x$originalHeight to ${newWidth}x$newHeight',
+      );
+    }
+
+    return ImageLoadResult(
+      image: processedImage,
+      originalWidth: originalWidth,
+      originalHeight: originalHeight,
+      wasResized: wasResized,
+    );
+  }
+
   Future<img.Image?> loadImage(File file) async {
     try {
       final bytes = await file.readAsBytes();
@@ -46,6 +206,22 @@ class ImageProcessingService {
       debugPrint('Error loading image: $e');
       return null;
     }
+  }
+
+  bool isImageTooLarge(int width, int height) {
+    return width > maxImageDimension ||
+        height > maxImageDimension ||
+        (width * height) > maxPixelsForProcessing;
+  }
+
+  String getImageSizeWarning(int width, int height) {
+    if (width > maxImageDimension || height > maxImageDimension) {
+      return '图片尺寸过大 (${width}x$height)，已自动缩放';
+    }
+    if ((width * height) > maxPixelsForProcessing) {
+      return '图片像素过多，已自动优化处理';
+    }
+    return '';
   }
 
   img.Image resizeImage(img.Image image, int width, int height) {
@@ -461,12 +637,16 @@ class ImageProcessingService {
   }
 
   img.Image _applyPixelArtStyle(img.Image image, {int colorLimit = 16}) {
-    var result = img.Image(width: image.width, height: image.height);
+    var result = img.copyResize(
+      image,
+      width: image.width,
+      height: image.height,
+    );
 
     result = img.adjustColor(result, contrast: 0.3);
     result = img.adjustColor(result, saturation: 0.2);
 
-    result = _applyEdgeEnhancement(image, strength: 1.5);
+    result = _applyEdgeEnhancement(result, strength: 1.5);
 
     result = _quantizeColors(result, colorLimit);
 
@@ -474,9 +654,7 @@ class ImageProcessingService {
   }
 
   img.Image _applyCartoonStyle(img.Image image) {
-    var result = img.Image(width: image.width, height: image.height);
-
-    result = img.gaussianBlur(image, radius: 1);
+    var result = img.gaussianBlur(image, radius: 1);
 
     result = img.adjustColor(result, saturation: 0.4);
     result = img.adjustColor(result, contrast: 0.15);
@@ -490,9 +668,7 @@ class ImageProcessingService {
   }
 
   img.Image _applyRealisticStyle(img.Image image) {
-    var result = img.Image(width: image.width, height: image.height);
-
-    result = img.adjustColor(image, contrast: 0.05);
+    var result = img.adjustColor(image, contrast: 0.05);
 
     return result;
   }
@@ -719,4 +895,16 @@ class ColorAnalysisResult {
   ColorAnalysisResult({required this.color, required this.count});
 
   double get percentage => count / 100.0;
+}
+
+class _IsolateData {
+  final SendPort sendPort;
+  final Uint8List bytes;
+  final int maxDimension;
+
+  _IsolateData({
+    required this.sendPort,
+    required this.bytes,
+    required this.maxDimension,
+  });
 }
