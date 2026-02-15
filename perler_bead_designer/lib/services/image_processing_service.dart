@@ -250,7 +250,6 @@ class ImageProcessingService {
 
     final originalWidth = decodedImage.width;
     final originalHeight = decodedImage.height;
-    final totalPixels = originalWidth * originalHeight;
 
     bool wasResized = false;
     img.Image processedImage = decodedImage;
@@ -627,15 +626,18 @@ class ImageProcessingService {
   }
 
   img.Image adjustBrightness(img.Image image, double factor) {
-    return img.adjustColor(image, brightness: factor);
+    if (factor == 0.0) return image;
+    return img.adjustColor(image, brightness: factor * 255);
   }
 
   img.Image adjustContrast(img.Image image, double factor) {
-    return img.adjustColor(image, contrast: factor);
+    if (factor == 0.0) return image;
+    return img.adjustColor(image, contrast: 1.0 + factor);
   }
 
   img.Image adjustSaturation(img.Image image, double factor) {
-    return img.adjustColor(image, saturation: factor);
+    if (factor == 0.0) return image;
+    return img.adjustColor(image, saturation: 1.0 + factor);
   }
 
   Map<String, int> analyzeColorUsage(img.Image image, ColorPalette palette) {
@@ -733,8 +735,8 @@ class ImageProcessingService {
       height: image.height,
     );
 
-    result = img.adjustColor(result, contrast: 0.3);
-    result = img.adjustColor(result, saturation: 0.2);
+    result = img.adjustColor(result, contrast: 1.3);
+    result = img.adjustColor(result, saturation: 1.2);
 
     result = _applyEdgeEnhancement(result, strength: 1.5);
 
@@ -746,9 +748,9 @@ class ImageProcessingService {
   img.Image _applyCartoonStyle(img.Image image) {
     var result = img.gaussianBlur(image, radius: 1);
 
-    result = img.adjustColor(result, saturation: 0.4);
-    result = img.adjustColor(result, contrast: 0.15);
-    result = img.adjustColor(result, brightness: 0.05);
+    result = img.adjustColor(result, saturation: 1.4);
+    result = img.adjustColor(result, contrast: 1.15);
+    result = img.adjustColor(result, brightness: 10);
 
     result = _applyBilateralFilter(result, spatialSigma: 3, colorSigma: 30);
 
@@ -758,7 +760,7 @@ class ImageProcessingService {
   }
 
   img.Image _applyRealisticStyle(img.Image image) {
-    var result = img.adjustColor(image, contrast: 0.05);
+    var result = img.adjustColor(image, contrast: 1.05);
 
     return result;
   }
@@ -1177,8 +1179,8 @@ class ImageProcessingService {
 
     return img.adjustColor(
       result,
-      saturation: 0.5 * intensity,
-      brightness: 0.1,
+      saturation: 1.0 + 0.5 * intensity,
+      brightness: 25,
     );
   }
 
@@ -1377,8 +1379,8 @@ class ImageProcessingService {
 
     result = img.adjustColor(
       result,
-      saturation: 0.2 * intensity,
-      contrast: 0.1,
+      saturation: 1.0 + 0.2 * intensity,
+      contrast: 1.1,
     );
 
     return result;

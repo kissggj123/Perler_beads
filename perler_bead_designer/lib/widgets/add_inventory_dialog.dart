@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../data/standard_colors.dart';
 import '../models/models.dart';
 import '../providers/color_palette_provider.dart';
 import '../providers/inventory_provider.dart';
@@ -52,7 +51,6 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final isEditing = widget.item != null;
 
     return AlertDialog(
@@ -142,7 +140,7 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
         const SizedBox(width: 12),
         Expanded(
           child: DropdownButtonFormField<String?>(
-            value: _selectedCategory,
+            initialValue: _selectedCategory,
             decoration: InputDecoration(
               hintText: '分类',
               border: OutlineInputBorder(
@@ -186,7 +184,7 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
         height: 200,
         decoration: BoxDecoration(
           border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
           ),
           borderRadius: BorderRadius.circular(8),
         ),
@@ -198,7 +196,7 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
       height: 200,
       decoration: BoxDecoration(
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
         ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -309,7 +307,7 @@ class _AddInventoryDialogState extends State<AddInventoryDialog> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<BeadBrand>(
-          value: _selectedBrand,
+          initialValue: _selectedBrand,
           decoration: const InputDecoration(
             labelText: '品牌',
             border: OutlineInputBorder(),

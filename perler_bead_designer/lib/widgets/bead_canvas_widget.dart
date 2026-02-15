@@ -42,9 +42,9 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   void _syncTransformFromProvider() {
     final provider = context.read<DesignEditorProvider>();
     final transform = provider.canvasTransform;
-    final matrix = Matrix4.identity()
-      ..translate(transform.offset.dx, transform.offset.dy)
-      ..scale(transform.scale);
+    final matrix = Matrix4.identity();
+    matrix.translate(transform.offset.dx, transform.offset.dy);
+    matrix.scale(transform.scale);
     _transformController.value = matrix;
   }
 

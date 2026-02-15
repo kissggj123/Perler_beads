@@ -23,7 +23,6 @@ class InventoryItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final isLowStock = item.quantity <= lowStockThreshold && item.quantity > 0;
     final isOutOfStock = item.quantity <= 0;
 
@@ -64,11 +63,11 @@ class InventoryItemTile extends StatelessWidget {
         color: item.beadColor.color,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
         ),
         boxShadow: [
           BoxShadow(
-            color: item.beadColor.color.withOpacity(0.3),
+            color: item.beadColor.color.withValues(alpha: 0.3),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -76,7 +75,11 @@ class InventoryItemTile extends StatelessWidget {
       ),
       child: item.beadColor.isLight
           ? null
-          : Icon(Icons.check, color: Colors.white.withOpacity(0.5), size: 20),
+          : Icon(
+              Icons.check,
+              color: Colors.white.withValues(alpha: 0.5),
+              size: 20,
+            ),
     );
   }
 

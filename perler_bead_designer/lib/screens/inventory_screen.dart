@@ -35,7 +35,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final inventoryProvider = context.watch<InventoryProvider>();
 
     return Scaffold(
@@ -66,7 +65,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         color: colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: colorScheme.shadow.withOpacity(0.05),
+            color: colorScheme.shadow.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -159,7 +158,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               filled: true,
-              fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              fillColor: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.5,
+              ),
             ),
             onChanged: (value) {
               provider.setSearchQuery(value);
@@ -201,14 +202,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     InventoryProvider provider,
   ) {
     return DropdownButtonFormField<String?>(
-      value: provider.selectedCategory,
+      initialValue: provider.selectedCategory,
       decoration: InputDecoration(
         labelText: '分类',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
         fillColor: Theme.of(
           context,
-        ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       ),
       items: [
         const DropdownMenuItem(value: null, child: Text('全部分类')),
@@ -224,14 +225,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Widget _buildBrandFilter(BuildContext context, InventoryProvider provider) {
     return DropdownButtonFormField<BeadBrand?>(
-      value: provider.selectedBrand,
+      initialValue: provider.selectedBrand,
       decoration: InputDecoration(
         labelText: '品牌',
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         filled: true,
         fillColor: Theme.of(
           context,
-        ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       ),
       items: [
         const DropdownMenuItem(value: null, child: Text('全部品牌')),
@@ -512,7 +513,7 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(

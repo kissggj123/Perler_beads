@@ -17,7 +17,8 @@ class PerformanceMonitorOverlay extends StatefulWidget {
   });
 
   @override
-  State<PerformanceMonitorOverlay> createState() => _PerformanceMonitorOverlayState();
+  State<PerformanceMonitorOverlay> createState() =>
+      _PerformanceMonitorOverlayState();
 }
 
 class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
@@ -33,7 +34,7 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
-    
+
     if (widget.showOverlay) {
       _performanceService.initialize().then((_) {
         _performanceService.startMonitoring();
@@ -55,22 +56,26 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
         widget.child,
         if (widget.showOverlay)
           Positioned(
-            top: widget.alignment == Alignment.topRight ||
+            top:
+                widget.alignment == Alignment.topRight ||
                     widget.alignment == Alignment.topLeft ||
                     widget.alignment == Alignment.topCenter
                 ? 0
                 : null,
-            bottom: widget.alignment == Alignment.bottomRight ||
+            bottom:
+                widget.alignment == Alignment.bottomRight ||
                     widget.alignment == Alignment.bottomLeft ||
                     widget.alignment == Alignment.bottomCenter
                 ? 0
                 : null,
-            left: widget.alignment == Alignment.topLeft ||
+            left:
+                widget.alignment == Alignment.topLeft ||
                     widget.alignment == Alignment.bottomLeft ||
                     widget.alignment == Alignment.centerLeft
                 ? 0
                 : null,
-            right: widget.alignment == Alignment.topRight ||
+            right:
+                widget.alignment == Alignment.topRight ||
                     widget.alignment == Alignment.bottomRight ||
                     widget.alignment == Alignment.centerRight
                 ? 0
@@ -86,7 +91,7 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
       animation: _performanceService,
       builder: (context, child) {
         final metrics = _performanceService.getCurrentMetrics();
-        
+
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(8),
@@ -114,11 +119,7 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
           children: [
             _buildFpsIndicator(metrics.frameRate),
             const SizedBox(width: 8),
-            const Icon(
-              Icons.expand_more,
-              color: Colors.white,
-              size: 16,
-            ),
+            const Icon(Icons.expand_more, color: Colors.white, size: 16),
           ],
         ),
       ),
@@ -160,11 +161,7 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
           ),
           InkWell(
             onTap: () => setState(() => _isExpanded = false),
-            child: const Icon(
-              Icons.expand_less,
-              color: Colors.white,
-              size: 16,
-            ),
+            child: const Icon(Icons.expand_less, color: Colors.white, size: 16),
           ),
         ],
       ),
@@ -245,10 +242,7 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                ),
+                style: const TextStyle(color: Colors.white70, fontSize: 10),
               ),
               Text(
                 value,
@@ -287,7 +281,8 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
             timings: timings.length > 60
                 ? timings.sublist(timings.length - 60)
                 : timings,
-            targetFrameTime: 1000.0 / _performanceService.config.targetFrameRate,
+            targetFrameTime:
+                1000.0 / _performanceService.config.targetFrameRate,
           ),
         ),
       ),
@@ -303,22 +298,15 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
           Row(
             children: [
               Icon(
-                metrics.isGpuAccelerated
-                    ? Icons.check_circle
-                    : Icons.cancel,
-                color: metrics.isGpuAccelerated
-                    ? Colors.green
-                    : Colors.orange,
+                metrics.isGpuAccelerated ? Icons.check_circle : Icons.cancel,
+                color: metrics.isGpuAccelerated ? Colors.green : Colors.orange,
                 size: 14,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'GPU 加速: ${metrics.isGpuAccelerated ? "已启用" : "已禁用"}',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 10,
-                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 10),
                 ),
               ),
             ],
@@ -326,10 +314,7 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
           const SizedBox(height: 4),
           Text(
             '后端: ${metrics.platformBackend}',
-            style: const TextStyle(
-              color: Colors.white54,
-              fontSize: 10,
-            ),
+            style: const TextStyle(color: Colors.white54, fontSize: 10),
           ),
         ],
       ),
@@ -340,7 +325,7 @@ class _PerformanceMonitorOverlayState extends State<PerformanceMonitorOverlay>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: _getFpsColor(fps).withOpacity(0.2),
+        color: _getFpsColor(fps).withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: _getFpsColor(fps)),
       ),
@@ -373,10 +358,7 @@ class FrameGraphPainter extends CustomPainter {
   final List<FrameTimingInfo> timings;
   final double targetFrameTime;
 
-  FrameGraphPainter({
-    required this.timings,
-    required this.targetFrameTime,
-  });
+  FrameGraphPainter({required this.timings, required this.targetFrameTime});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -387,13 +369,16 @@ class FrameGraphPainter extends CustomPainter {
 
     for (int i = 0; i < timings.length; i++) {
       final timing = timings[i];
-      final barHeight = (timing.frameTime / maxTime * size.height).clamp(2.0, size.height);
-      
+      final barHeight = (timing.frameTime / maxTime * size.height).clamp(
+        2.0,
+        size.height,
+      );
+
       final color = timing.isDropped
-          ? Colors.red.withOpacity(0.8)
+          ? Colors.red.withValues(alpha: 0.8)
           : timing.frameTime > targetFrameTime
-              ? Colors.orange.withOpacity(0.6)
-              : Colors.green.withOpacity(0.6);
+          ? Colors.orange.withValues(alpha: 0.6)
+          : Colors.green.withValues(alpha: 0.6);
 
       final rect = Rect.fromLTWH(
         i * barWidth,
@@ -410,7 +395,7 @@ class FrameGraphPainter extends CustomPainter {
       Offset(0, targetY),
       Offset(size.width, targetY),
       Paint()
-        ..color = Colors.white.withOpacity(0.3)
+        ..color = Colors.white.withValues(alpha: 0.3)
         ..strokeWidth = 1,
     );
   }
@@ -424,10 +409,7 @@ class FrameGraphPainter extends CustomPainter {
 class PerformanceStatsPanel extends StatelessWidget {
   final PerformanceMetrics metrics;
 
-  const PerformanceStatsPanel({
-    super.key,
-    required this.metrics,
-  });
+  const PerformanceStatsPanel({super.key, required this.metrics});
 
   @override
   Widget build(BuildContext context) {
@@ -440,10 +422,7 @@ class PerformanceStatsPanel extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '性能统计',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+                Text('性能统计', style: Theme.of(context).textTheme.titleMedium),
                 _buildRatingBadge(metrics.performanceRating),
               ],
             ),
@@ -510,23 +489,16 @@ class PerformanceStatsPanel extends StatelessWidget {
   ) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 18,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+        Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
         ),
         Text(
           value,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
       ],
     );
@@ -543,7 +515,7 @@ class PerformanceStatsPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color),
       ),

@@ -911,7 +911,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                 itemCount: paletteProvider.allColors.length > 30
                     ? 30
                     : paletteProvider.allColors.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 4),
+                separatorBuilder: (context, index) => const SizedBox(width: 4),
                 itemBuilder: (context, index) {
                   final color = paletteProvider.allColors[index];
                   return Tooltip(

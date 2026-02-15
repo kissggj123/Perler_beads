@@ -22,7 +22,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen>
     with SingleTickerProviderStateMixin {
   static const String appName = '兔可可的拼豆世界';
-  static const String appVersion = '1.1.5';
+  static const String appVersion = '2.0.0';
   static const String developer = 'BunnyCC';
   static const String copyright =
       'Copyright © 2026 BunnyCC. All rights reserved.';
@@ -2031,17 +2031,13 @@ class AboutAppDialog extends StatelessWidget {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(
-              Icons.grid_on,
-              size: 48,
-              color: colorScheme.onPrimaryContainer,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              'assets/images/logo.png',
+              width: 80,
+              height: 80,
+              fit: BoxFit.cover,
             ),
           ),
           const SizedBox(height: 16),
