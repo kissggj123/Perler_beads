@@ -32,16 +32,16 @@ jobs:
       - name: Create DMG
         run: |
           cd perler_bead_designer/build/macos/Build/Products/Release
-          hdiutil create -volname "兔可可的拼豆世界" \
+          hdiutil create -volname "BunnyCC Perler" \
             -srcfolder "兔可可的拼豆世界.app" \
             -ov -format UDZO \
-            "../../../兔可可的拼豆世界-macos.dmg"
+            "../../../bunnycc-perler-macos.dmg"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-release
-          path: perler_bead_designer/build/兔可可的拼豆世界-macos.dmg
+          path: perler_bead_designer/build/bunnycc-perler-macos.dmg
           retention-days: 30
 
   build-windows:
@@ -69,13 +69,13 @@ jobs:
       - name: Create ZIP archive
         run: |
           cd perler_bead_designer/build/windows/x64/runner/Release
-          Compress-Archive -Path * -DestinationPath ../../../兔可可的拼豆世界-windows.zip
+          Compress-Archive -Path * -DestinationPath ../../../bunnycc-perler-windows.zip
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-release
-          path: perler_bead_designer/build/兔可可的拼豆世界-windows.zip
+          path: perler_bead_designer/build/bunnycc-perler-windows.zip
           retention-days: 30
 
   create-release:
@@ -110,8 +110,8 @@ jobs:
             ## 🎉 兔可可的拼豆世界 ${{ steps.get_version.outputs.VERSION }}
             
             ### 下载
-            - **macOS**: 兔可可的拼豆世界-macos.dmg
-            - **Windows**: 兔可可的拼豆世界-windows.zip
+            - **macOS**: bunnycc-perler-macos.dmg
+            - **Windows**: bunnycc-perler-windows.zip
             
             ### 系统要求
             - macOS 10.14 (Mojave) 或更高版本
@@ -120,8 +120,8 @@ jobs:
             ### 更新内容
             请查看 [更新日志](https://github.com/${{ github.repository }}/blob/main/README.md#-更新日志)
           files: |
-            artifacts/兔可可的拼豆世界-macos.dmg
-            artifacts/兔可可的拼豆世界-windows.zip
+            artifacts/bunnycc-perler-macos.dmg
+            artifacts/bunnycc-perler-windows.zip
           draft: false
           prerelease: false
         env:
