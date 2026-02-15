@@ -1,0 +1,206 @@
+# 🐰 兔可可的拼豆世界
+
+> 一款专为拼豆爱好者设计的桌面应用程序
+
+[![Build and Release](https://github.com/your-username/bunnycc-perler/actions/workflows/build.yml/badge.svg)](https://github.com/your-username/bunnycc-perler/actions/workflows/build.yml)
+[![CI](https://github.com/your-username/bunnycc-perler/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/bunnycc-perler/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/your-username/bunnycc-perler/releases)
+
+<p align="center">
+  <img src="perler_bead_designer/macos/Runner/Assets.xcassets/AppIcon.appiconset/512-mac.png" alt="Logo" width="128" height="128">
+</p>
+
+<p align="center">
+  <a href="#-功能特性">功能特性</a> •
+  <a href="#-下载">下载</a> •
+  <a href="#-快速开始">快速开始</a> •
+  <a href="#-截图">截图</a> •
+  <a href="#-技术栈">技术栈</a>
+</p>
+
+---
+
+## ✨ 功能特性
+
+### 🎨 设计创建
+
+- **新建设计** - 创建自定义尺寸的空白画布，支持多种预设尺寸（15×15、29×29、35×35、50×50、100×100）
+- **导入图片** - 将图片自动转换为拼豆设计，支持智能颜色匹配和抖动算法
+- **设计编辑器** - 直观的网格编辑界面，支持绘制、擦除、填充工具
+
+### 📦 库存管理
+
+- **库存追踪** - 记录每种颜色拼豆的数量
+- **导入导出** - 支持 CSV 和 JSON 格式的数据导入导出
+- **低库存警告** - 自动提醒库存不足的颜色
+
+### 🎯 颜色库
+
+- **内置颜色** - 包含 Perler、Hama、Artkal 等品牌的 125+ 种标准颜色
+- **自定义颜色** - 支持添加自定义颜色到颜色库
+- **颜色搜索** - 快速搜索和筛选颜色
+
+### 📤 导出功能
+
+- **PNG 导出** - 高质量图片导出，支持多种缩放比例
+- **PDF 导出** - 适合打印的 PDF 文档，支持多种页面尺寸
+- **材料清单** - 导出详细的材料使用清单（CSV/PDF）
+
+### 🔌 插件系统
+
+- **颜色优化** - 自动优化颜色使用，减少颜色种类
+- **抖动效果** - Floyd-Steinberg 抖动算法，改善颜色过渡
+- **轮廓提取** - 自动提取设计轮廓
+
+---
+
+## 📥 下载
+
+### 最新版本
+
+| 平台                  | 下载                                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| macOS (Apple Silicon) | [兔可可的拼豆世界-macos.dmg](https://github.com/your-username/bunnycc-perler/releases/latest)   |
+| Windows               | [兔可可的拼豆世界-windows.zip](https://github.com/your-username/bunnycc-perler/releases/latest) |
+
+### 系统要求
+
+| 平台    | 最低要求                        |
+| ------- | ------------------------------- |
+| macOS   | macOS 10.14 (Mojave) 或更高版本 |
+| Windows | Windows 10 或更高版本           |
+
+---
+
+## 🚀 快速开始
+
+### 安装
+
+#### macOS
+
+1. 下载 DMG 文件
+2. 打开 DMG 文件
+3. 将应用拖拽到 Applications 文件夹
+4. 首次运行可能需要在"系统偏好设置 > 安全性与隐私"中允许运行
+
+#### Windows
+
+1. 下载 ZIP 文件
+2. 解压到任意目录
+3. 运行 `兔可可的拼豆世界.exe`
+
+### 从源码构建
+
+```bash
+# 克隆仓库
+git clone https://github.com/your-username/bunnycc-perler.git
+cd bunnycc-perler/perler_bead_designer
+
+# 安装依赖
+flutter pub get
+
+# 运行应用
+flutter run -d macos    # macOS
+flutter run -d windows  # Windows
+
+# 构建发布版本
+flutter build macos --release    # macOS
+flutter build windows --release  # Windows
+```
+
+---
+
+## 📸 截图
+
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="首页" width="45%">
+  <img src="docs/screenshots/editor.png" alt="编辑器" width="45%">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/inventory.png" alt="库存管理" width="45%">
+  <img src="docs/screenshots/import.png" alt="图片导入" width="45%">
+</p>
+
+---
+
+## ⌨️ 快捷键
+
+| 快捷键   | 功能     |
+| -------- | -------- |
+| `D`      | 绘制模式 |
+| `E`      | 擦除模式 |
+| `F`      | 填充模式 |
+| `G`      | 切换网格 |
+| `C`      | 切换坐标 |
+| `Ctrl+Z` | 撤销     |
+| `Ctrl+Y` | 重做     |
+| `Ctrl+S` | 保存     |
+
+---
+
+## 🛠️ 技术栈
+
+- **框架**: [Flutter](https://flutter.dev/) 3.10.7
+- **状态管理**: [Provider](https://pub.dev/packages/provider)
+- **图片处理**: [image](https://pub.dev/packages/image)
+- **PDF 生成**: [pdf](https://pub.dev/packages/pdf)
+- **文件选择**: [file_picker](https://pub.dev/packages/file_picker)
+- **本地存储**: [shared_preferences](https://pub.dev/packages/shared_preferences)
+
+---
+
+## 📁 项目结构
+
+```
+bunnycc-perler/
+├── perler_bead_designer/     # Flutter 项目目录
+│   ├── lib/                  # Dart 源代码
+│   │   ├── main.dart         # 应用入口
+│   │   ├── models/           # 数据模型
+│   │   ├── providers/        # 状态管理
+│   │   ├── screens/          # 页面
+│   │   ├── services/         # 服务层
+│   │   ├── widgets/          # UI 组件
+│   │   └── plugins/          # 插件系统
+│   ├── macos/                # macOS 平台代码
+│   ├── windows/              # Windows 平台代码
+│   └── assets/               # 资源文件
+└── .github/                  # GitHub Actions 配置
+```
+
+---
+
+## 📝 更新日志
+
+### v1.0.0 (2026-02-15)
+
+- 🎉 首次发布
+- ✨ 支持新建设计功能
+- ✨ 支持导入图片生成设计
+- ✨ 支持设计编辑器（绘制、擦除、填充）
+- ✨ 支持库存管理（CSV/JSON导入导出）
+- ✨ 支持颜色库管理
+- ✨ 支持PNG/PDF导出
+- ✨ 支持材料清单导出
+- ✨ 支持插件系统
+- ✨ 支持深色/浅色主题切换
+
+---
+
+## 🤝 贡献
+
+请随意修改和分发本项目的代码！
+
+---
+
+## 📄 许可证
+
+随便修改就完事 开源！
+
+---
+
+<p align="center">
+  Made with ❤️ by BunnyCC
+</p>
