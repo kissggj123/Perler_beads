@@ -34,6 +34,7 @@ class ImageProcessingProvider extends ChangeNotifier {
   double _contrast = 0.0;
   double _saturation = 0.0;
   DitheringMode _ditheringMode = DitheringMode.none;
+  AlgorithmStyle _algorithmStyle = AlgorithmStyle.realistic;
 
   File? get selectedFile => _selectedFile;
   img.Image? get originalImage => _originalImage;
@@ -56,6 +57,7 @@ class ImageProcessingProvider extends ChangeNotifier {
   double get contrast => _contrast;
   double get saturation => _saturation;
   DitheringMode get ditheringMode => _ditheringMode;
+  AlgorithmStyle get algorithmStyle => _algorithmStyle;
 
   bool get hasImage => _originalImage != null;
   bool get isProcessing =>
@@ -123,6 +125,11 @@ class ImageProcessingProvider extends ChangeNotifier {
         saturation: _saturation,
       );
 
+      processedImage = _service.applyAlgorithmStyle(
+        processedImage,
+        _algorithmStyle,
+      );
+
       _previewImage = _service.pixelateImage(
         processedImage,
         _outputWidth,
@@ -154,6 +161,11 @@ class ImageProcessingProvider extends ChangeNotifier {
         brightness: _brightness,
         contrast: _contrast,
         saturation: _saturation,
+      );
+
+      processedImage = _service.applyAlgorithmStyle(
+        processedImage,
+        _algorithmStyle,
       );
 
       final pixelatedImage = _service.pixelateImage(
@@ -255,11 +267,18 @@ class ImageProcessingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setAlgorithmStyle(AlgorithmStyle style) {
+    _algorithmStyle = style;
+    _generatePreview();
+    notifyListeners();
+  }
+
   void resetAdjustments() {
     _brightness = 0.0;
     _contrast = 0.0;
     _saturation = 0.0;
     _ditheringMode = DitheringMode.none;
+    _algorithmStyle = AlgorithmStyle.realistic;
     _generatePreview();
     notifyListeners();
   }
@@ -302,6 +321,7 @@ class ImageProcessingProvider extends ChangeNotifier {
     _contrast = 0.0;
     _saturation = 0.0;
     _ditheringMode = DitheringMode.none;
+    _algorithmStyle = AlgorithmStyle.realistic;
     notifyListeners();
   }
 
@@ -349,4 +369,36 @@ class ImageProcessingProvider extends ChangeNotifier {
   int get totalBeadCount => _outputWidth * _outputHeight;
 
   String get dimensionInfo => '$_outputWidth × $_outputHeight';
+
+  Color? getPixelColor(int gridX, int gridY) {
+    if (_previewImage == null) return null;
+
+    if (gridX < 0 ||
+        gridX >= _outputWidth ||
+        gridY < 0 ||
+        gridY >= _outputHeight) {
+      return null;
+    }
+
+    final cellWidth = _previewImage!.width / _outputWidth;
+    final cellHeight = _previewImage!.height / _outputHeight;
+
+    final pixelX = (gridX * cellWidth + cellWidth / 2).round().clamp(
+      0,
+      _previewImage!.width - 1,
+    );
+    final pixelY = (gridY * cellHeight + cellHeight / 2).round().clamp(
+      0,
+      _previewImage!.height - 1,
+    );
+
+    final pixel = _previewImage!.getPixel(pixelX, pixelY);
+
+    return Color.fromARGB(
+      pixel.a.toInt(),
+      pixel.r.toInt(),
+      pixel.g.toInt(),
+      pixel.b.toInt(),
+    );
+  }
 }

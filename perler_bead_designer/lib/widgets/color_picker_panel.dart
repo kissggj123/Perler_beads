@@ -265,6 +265,10 @@ class _ColorPickerPanelState extends State<ColorPickerPanel> {
         return 'Hama';
       case BeadBrand.artkal:
         return 'Artkal';
+      case BeadBrand.taobao:
+        return '淘宝';
+      case BeadBrand.pinduoduo:
+        return '拼多多';
       case BeadBrand.generic:
         return '通用';
     }

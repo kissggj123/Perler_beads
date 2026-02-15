@@ -8,10 +8,32 @@ import '../models/bead_color.dart';
 import '../models/bead_design.dart';
 import '../models/color_palette.dart';
 
-enum DitheringMode {
-  none,
-  floydSteinberg,
-  ordered,
+enum DitheringMode { none, floydSteinberg, ordered }
+
+enum AlgorithmStyle { pixelArt, cartoon, realistic }
+
+extension AlgorithmStyleExtension on AlgorithmStyle {
+  String get displayName {
+    switch (this) {
+      case AlgorithmStyle.pixelArt:
+        return '像素艺术';
+      case AlgorithmStyle.cartoon:
+        return '卡通';
+      case AlgorithmStyle.realistic:
+        return '写实';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case AlgorithmStyle.pixelArt:
+        return '强调边缘，减少颜色数量，适合复古像素风格';
+      case AlgorithmStyle.cartoon:
+        return '平滑颜色过渡，饱和度增强，适合卡通风格';
+      case AlgorithmStyle.realistic:
+        return '保持原始颜色细节，适合写实风格';
+    }
+  }
 }
 
 class ImageProcessingService {
@@ -167,7 +189,12 @@ class ImageProcessingService {
           g = g.clamp(0.0, 255.0);
           b = b.clamp(0.0, 255.0);
 
-          final matchedColor = matchColor(r.round(), g.round(), b.round(), palette);
+          final matchedColor = matchColor(
+            r.round(),
+            g.round(),
+            b.round(),
+            palette,
+          );
           grid[y][x] = matchedColor;
 
           if (matchedColor != null) {
@@ -175,7 +202,16 @@ class ImageProcessingService {
             final errorG = g - matchedColor.green;
             final errorB = b - matchedColor.blue;
 
-            _distributeError(errorBuffer, x, y, width, height, errorR, errorG, errorB);
+            _distributeError(
+              errorBuffer,
+              x,
+              y,
+              width,
+              height,
+              errorR,
+              errorG,
+              errorB,
+            );
           }
         }
 
@@ -201,8 +237,13 @@ class ImageProcessingService {
 
   void _distributeError(
     List<List<List<double>>> errorBuffer,
-    int x, int y, int width, int height,
-    double errorR, double errorG, double errorB,
+    int x,
+    int y,
+    int width,
+    int height,
+    double errorR,
+    double errorG,
+    double errorB,
   ) {
     final coefficients = [
       [1, 0, 7.0 / 16.0],
@@ -232,8 +273,12 @@ class ImageProcessingService {
 
     for (final color in palette.colors) {
       final distance = _calculateColorDistance(
-        r, g, b,
-        color.red, color.green, color.blue,
+        r,
+        g,
+        b,
+        color.red,
+        color.green,
+        color.blue,
       );
 
       if (distance < minDistance) {
@@ -245,7 +290,14 @@ class ImageProcessingService {
     return closestColor;
   }
 
-  double _calculateColorDistance(int r1, int g1, int b1, int r2, int g2, int b2) {
+  double _calculateColorDistance(
+    int r1,
+    int g1,
+    int b1,
+    int r2,
+    int g2,
+    int b2,
+  ) {
     final dr = r2 - r1;
     final dg = g2 - g1;
     final db = b2 - b1;
@@ -256,11 +308,7 @@ class ImageProcessingService {
     final weightG = 4.0;
     final weightB = 2.0 + (255.0 - meanR) / 256.0;
 
-    return sqrt(
-      weightR * dr * dr +
-      weightG * dg * dg +
-      weightB * db * db
-    );
+    return sqrt(weightR * dr * dr + weightG * dg * dg + weightB * db * db);
   }
 
   Future<ui.Image> imageToFlutterImage(img.Image image) async {
@@ -396,16 +444,279 @@ class ImageProcessingService {
 
     return result;
   }
+
+  img.Image applyAlgorithmStyle(
+    img.Image image,
+    AlgorithmStyle style, {
+    int colorLimit = 16,
+  }) {
+    switch (style) {
+      case AlgorithmStyle.pixelArt:
+        return _applyPixelArtStyle(image, colorLimit: colorLimit);
+      case AlgorithmStyle.cartoon:
+        return _applyCartoonStyle(image);
+      case AlgorithmStyle.realistic:
+        return _applyRealisticStyle(image);
+    }
+  }
+
+  img.Image _applyPixelArtStyle(img.Image image, {int colorLimit = 16}) {
+    var result = img.Image(width: image.width, height: image.height);
+
+    result = img.adjustColor(result, contrast: 0.3);
+    result = img.adjustColor(result, saturation: 0.2);
+
+    result = _applyEdgeEnhancement(image, strength: 1.5);
+
+    result = _quantizeColors(result, colorLimit);
+
+    return result;
+  }
+
+  img.Image _applyCartoonStyle(img.Image image) {
+    var result = img.Image(width: image.width, height: image.height);
+
+    result = img.gaussianBlur(image, radius: 1);
+
+    result = img.adjustColor(result, saturation: 0.4);
+    result = img.adjustColor(result, contrast: 0.15);
+    result = img.adjustColor(result, brightness: 0.05);
+
+    result = _applyBilateralFilter(result, spatialSigma: 3, colorSigma: 30);
+
+    result = _applyColorSmoothing(result, threshold: 25);
+
+    return result;
+  }
+
+  img.Image _applyRealisticStyle(img.Image image) {
+    var result = img.Image(width: image.width, height: image.height);
+
+    result = img.adjustColor(image, contrast: 0.05);
+
+    return result;
+  }
+
+  img.Image _applyEdgeEnhancement(img.Image image, {double strength = 1.0}) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    final sobelX = [
+      [-1, 0, 1],
+      [-2, 0, 2],
+      [-1, 0, 1],
+    ];
+
+    final sobelY = [
+      [-1, -2, -1],
+      [0, 0, 0],
+      [1, 2, 1],
+    ];
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r.toInt().clamp(0, 255);
+        final g = pixel.g.toInt().clamp(0, 255);
+        final b = pixel.b.toInt().clamp(0, 255);
+
+        double edgeR = 0, edgeG = 0, edgeB = 0;
+
+        for (int ky = -1; ky <= 1; ky++) {
+          for (int kx = -1; kx <= 1; kx++) {
+            final nx = (x + kx).clamp(0, image.width - 1);
+            final ny = (y + ky).clamp(0, image.height - 1);
+
+            final neighborPixel = image.getPixel(nx, ny);
+            final nr = neighborPixel.r.toInt();
+            final ng = neighborPixel.g.toInt();
+            final nb = neighborPixel.b.toInt();
+
+            final kernelX = sobelX[ky + 1][kx + 1].toDouble();
+            final kernelY = sobelY[ky + 1][kx + 1].toDouble();
+
+            edgeR += nr * kernelX + nr * kernelY;
+            edgeG += ng * kernelX + ng * kernelY;
+            edgeB += nb * kernelX + nb * kernelY;
+          }
+        }
+
+        final edgeMagnitude = sqrt(
+          edgeR * edgeR + edgeG * edgeG + edgeB * edgeB,
+        );
+        final edgeFactor = 1.0 + (edgeMagnitude / 255.0) * strength * 0.3;
+
+        final newR = (r * edgeFactor).round().clamp(0, 255);
+        final newG = (g * edgeFactor).round().clamp(0, 255);
+        final newB = (b * edgeFactor).round().clamp(0, 255);
+
+        result.setPixel(x, y, img.ColorRgb8(newR, newG, newB));
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _quantizeColors(img.Image image, int colorLimit) {
+    final colorMap = <int, int>{};
+    final colorCounts = <int, int>{};
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        final r = (pixel.r.toInt() / 32).floor() * 32;
+        final g = (pixel.g.toInt() / 32).floor() * 32;
+        final b = (pixel.b.toInt() / 32).floor() * 32;
+
+        final quantizedColor = (r << 16) | (g << 8) | b;
+        colorCounts[quantizedColor] = (colorCounts[quantizedColor] ?? 0) + 1;
+      }
+    }
+
+    final sortedColors = colorCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final topColors = sortedColors.take(colorLimit).map((e) => e.key).toList();
+
+    for (int i = 0; i < topColors.length; i++) {
+      colorMap[topColors[i]] = i;
+    }
+
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+
+        final quantizedColor = _findClosestColor(r, g, b, topColors);
+
+        final qr = (quantizedColor >> 16) & 0xFF;
+        final qg = (quantizedColor >> 8) & 0xFF;
+        final qb = quantizedColor & 0xFF;
+
+        result.setPixel(x, y, img.ColorRgb8(qr, qg, qb));
+      }
+    }
+
+    return result;
+  }
+
+  int _findClosestColor(int r, int g, int b, List<int> colors) {
+    int closestColor = colors.first;
+    double minDistance = double.infinity;
+
+    for (final color in colors) {
+      final cr = (color >> 16) & 0xFF;
+      final cg = (color >> 8) & 0xFF;
+      final cb = color & 0xFF;
+
+      final distance = sqrt(pow(r - cr, 2) + pow(g - cg, 2) + pow(b - cb, 2));
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestColor = color;
+      }
+    }
+
+    return closestColor;
+  }
+
+  img.Image _applyBilateralFilter(
+    img.Image image, {
+    double spatialSigma = 3.0,
+    double colorSigma = 30.0,
+  }) {
+    final result = img.Image(width: image.width, height: image.height);
+    final radius = (spatialSigma * 2).round();
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final centerPixel = image.getPixel(x, y);
+        final cr = centerPixel.r.toDouble();
+        final cg = centerPixel.g.toDouble();
+        final cb = centerPixel.b.toDouble();
+
+        double sumR = 0, sumG = 0, sumB = 0;
+        double weightSum = 0;
+
+        for (int ky = -radius; ky <= radius; ky++) {
+          for (int kx = -radius; kx <= radius; kx++) {
+            final nx = (x + kx).clamp(0, image.width - 1);
+            final ny = (y + ky).clamp(0, image.height - 1);
+
+            final neighborPixel = image.getPixel(nx, ny);
+            final nr = neighborPixel.r.toDouble();
+            final ng = neighborPixel.g.toDouble();
+            final nb = neighborPixel.b.toDouble();
+
+            final spatialDist = sqrt(kx * kx.toDouble() + ky * ky.toDouble());
+            final colorDist = sqrt(
+              pow(cr - nr, 2) + pow(cg - ng, 2) + pow(cb - nb, 2),
+            );
+
+            final spatialWeight = exp(
+              -(spatialDist * spatialDist) / (2 * spatialSigma * spatialSigma),
+            );
+            final colorWeight = exp(
+              -(colorDist * colorDist) / (2 * colorSigma * colorSigma),
+            );
+            final weight = spatialWeight * colorWeight;
+
+            sumR += nr * weight;
+            sumG += ng * weight;
+            sumB += nb * weight;
+            weightSum += weight;
+          }
+        }
+
+        final newR = (sumR / weightSum).round().clamp(0, 255);
+        final newG = (sumG / weightSum).round().clamp(0, 255);
+        final newB = (sumB / weightSum).round().clamp(0, 255);
+
+        result.setPixel(x, y, img.ColorRgb8(newR, newG, newB));
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _applyColorSmoothing(img.Image image, {int threshold = 25}) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+
+        final smoothedR = (r / threshold).round() * threshold;
+        final smoothedG = (g / threshold).round() * threshold;
+        final smoothedB = (b / threshold).round() * threshold;
+
+        result.setPixel(
+          x,
+          y,
+          img.ColorRgb8(
+            smoothedR.clamp(0, 255),
+            smoothedG.clamp(0, 255),
+            smoothedB.clamp(0, 255),
+          ),
+        );
+      }
+    }
+
+    return result;
+  }
 }
 
 class ColorAnalysisResult {
   final BeadColor color;
   int count;
 
-  ColorAnalysisResult({
-    required this.color,
-    required this.count,
-  });
+  ColorAnalysisResult({required this.color, required this.count});
 
   double get percentage => count / 100.0;
 }

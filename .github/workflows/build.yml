@@ -31,6 +31,7 @@ jobs:
 
       - name: Create DMG
         run: |
+          # 这一步将文件生成在 build/macos/ 目录下
           cd perler_bead_designer/build/macos/Build/Products/Release
           hdiutil create -volname "BunnyCC Perler" \
             -srcfolder "兔可可的拼豆世界.app" \
@@ -41,7 +42,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-release
-          path: perler_bead_designer/build/bunnycc-perler-macos.dmg
+          # 修改这里：指向 build/macos/ 下的文件
+          path: perler_bead_designer/build/macos/bunnycc-perler-macos.dmg
           retention-days: 30
 
   build-windows:
@@ -68,6 +70,7 @@ jobs:
 
       - name: Create ZIP archive
         run: |
+          # 这一步将文件生成在 build/windows/ 目录下
           cd perler_bead_designer/build/windows/x64/runner/Release
           Compress-Archive -Path * -DestinationPath ../../../bunnycc-perler-windows.zip
 
@@ -75,7 +78,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-release
-          path: perler_bead_designer/build/bunnycc-perler-windows.zip
+          # 修改这里：指向 build/windows/ 下的文件
+          path: perler_bead_designer/build/windows/bunnycc-perler-windows.zip
           retention-days: 30
 
   create-release:

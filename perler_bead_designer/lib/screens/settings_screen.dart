@@ -4,17 +4,35 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/app_provider.dart';
+import '../services/data_export_service.dart';
 import '../services/design_storage_service.dart';
 import '../services/settings_service.dart';
+import '../services/storage_service.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
   static const String appName = '兔可可的拼豆世界';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.0.1';
   static const String developer = 'BunnyCC';
   static const String copyright =
       'Copyright © 2026 BunnyCC. All rights reserved.';
+
+  late bool _exportShowGrid;
+  late bool _exportPdfIncludeStats;
+
+  @override
+  void initState() {
+    super.initState();
+    final settingsService = SettingsService();
+    _exportShowGrid = settingsService.getExportShowGrid();
+    _exportPdfIncludeStats = settingsService.getExportPdfIncludeStats();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +118,6 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildCustomizationSection(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final settingsService = SettingsService();
 
     return _SettingsCard(
       title: '自定义设置',
@@ -142,15 +159,27 @@ class SettingsScreen extends StatelessWidget {
           secondary: Icon(Icons.picture_as_pdf, color: colorScheme.primary),
           title: const Text('导出PDF时包含颜色统计'),
           subtitle: const Text('在PDF中显示每种颜色的使用数量'),
-          value: true,
-          onChanged: (value) {},
+          value: _exportPdfIncludeStats,
+          onChanged: (value) async {
+            final settingsService = SettingsService();
+            await settingsService.setExportPdfIncludeStats(value);
+            setState(() {
+              _exportPdfIncludeStats = value;
+            });
+          },
         ),
         SwitchListTile(
           secondary: Icon(Icons.grid_on, color: colorScheme.secondary),
           title: const Text('导出时显示网格线'),
           subtitle: const Text('在导出图片中显示网格参考线'),
-          value: false,
-          onChanged: (value) {},
+          value: _exportShowGrid,
+          onChanged: (value) async {
+            final settingsService = SettingsService();
+            await settingsService.setExportShowGrid(value);
+            setState(() {
+              _exportShowGrid = value;
+            });
+          },
         ),
       ],
     );
@@ -158,11 +187,27 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildDataSection(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final storageService = StorageService();
+    final dataPath = storageService.dataDirectoryPath;
 
     return _SettingsCard(
       title: '数据管理',
       icon: Icons.storage_outlined,
       children: [
+        ListTile(
+          leading: Icon(Icons.folder_open, color: colorScheme.primary),
+          title: const Text('打开数据目录'),
+          subtitle: Text(
+            dataPath,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openDataDirectory(context),
+        ),
         ListTile(
           leading: Icon(Icons.folder_outlined, color: colorScheme.primary),
           title: const Text('导出所有数据'),
@@ -402,16 +447,176 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  void _exportAllData(BuildContext context) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('导出功能开发中...')));
+  void _exportAllData(BuildContext context) async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('导出所有数据'),
+        content: const Text('将导出所有设计和库存数据到 JSON 文件。\n\n您可以选择保存位置。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('导出'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !context.mounted) return;
+
+    String statusText = '准备导出...';
+    double progress = 0.0;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('导出数据'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(value: progress / 100),
+              const SizedBox(height: 16),
+              Text(statusText),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final exportService = DataExportService();
+    final success = await exportService.exportAllDataToFile(
+      onProgress: (current, total, status) {
+        statusText = status;
+        progress = current.toDouble();
+      },
+    );
+
+    if (context.mounted) {
+      Navigator.pop(context);
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('数据导出成功'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('导出已取消或失败')));
+      }
+    }
   }
 
-  void _importData(BuildContext context) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('导入功能开发中...')));
+  void _openDataDirectory(BuildContext context) async {
+    final storageService = StorageService();
+    final success = await storageService.openDataDirectory();
+    if (context.mounted) {
+      if (success) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已打开数据目录')));
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('无法打开数据目录')));
+      }
+    }
+  }
+
+  void _importData(BuildContext context) async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('导入数据'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('从备份文件恢复数据。'),
+            SizedBox(height: 12),
+            Text('• 已存在的设计将被重命名导入'),
+            Text('• 库存数量将与现有库存合并'),
+            Text('• 此操作不可撤销'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('选择文件'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !context.mounted) return;
+
+    String statusText = '准备导入...';
+    double progress = 0.0;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('导入数据'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(value: progress / 100),
+              const SizedBox(height: 16),
+              Text(statusText),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final exportService = DataExportService();
+    final result = await exportService.importDataFromFile(
+      onProgress: (current, total, status) {
+        statusText = status;
+        progress = current.toDouble();
+      },
+    );
+
+    if (context.mounted) {
+      Navigator.pop(context);
+
+      if (result.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.summary),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else if (result.cancelled) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('导入已取消')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.errorMessage ?? '导入失败'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _showClearCacheDialog(BuildContext context) {

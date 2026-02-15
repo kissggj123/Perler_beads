@@ -330,6 +330,8 @@ class _ColorPaletteScreenState extends State<_ColorPaletteScreen> {
       BeadBrand.perler: 'Perler',
       BeadBrand.hama: 'Hama',
       BeadBrand.artkal: 'Artkal',
+      BeadBrand.taobao: '淘宝',
+      BeadBrand.pinduoduo: '拼多多',
       BeadBrand.generic: '通用',
     };
 
@@ -724,6 +726,8 @@ class _ColorCard extends StatelessWidget {
       BeadBrand.perler: 'Perler',
       BeadBrand.hama: 'Hama',
       BeadBrand.artkal: 'Artkal',
+      BeadBrand.taobao: '淘宝',
+      BeadBrand.pinduoduo: '拼多多',
       BeadBrand.generic: '通用',
     };
 

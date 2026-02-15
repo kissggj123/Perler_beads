@@ -482,6 +482,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
         return 'Hama';
       case BeadBrand.artkal:
         return 'Artkal';
+      case BeadBrand.taobao:
+        return '淘宝';
+      case BeadBrand.pinduoduo:
+        return '拼多多';
       case BeadBrand.generic:
         return '通用';
     }

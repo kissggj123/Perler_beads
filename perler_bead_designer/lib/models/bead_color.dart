@@ -6,6 +6,8 @@ enum BeadBrand {
   perler,
   hama,
   artkal,
+  taobao,
+  pinduoduo,
   generic,
 }
 

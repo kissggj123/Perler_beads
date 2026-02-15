@@ -120,4 +120,27 @@ class StorageService {
   Future<String> getExportPath(String fileName) async {
     return '${appDocDir.path}/$fileName';
   }
+
+  String get dataDirectoryPath {
+    return appDocDir.path;
+  }
+
+  Future<bool> openDataDirectory() async {
+    try {
+      final path = dataDirectoryPath;
+      if (Platform.isMacOS) {
+        final result = await Process.run('open', [path]);
+        return result.exitCode == 0;
+      } else if (Platform.isWindows) {
+        final result = await Process.run('explorer', [path]);
+        return result.exitCode == 0;
+      } else if (Platform.isLinux) {
+        final result = await Process.run('xdg-open', [path]);
+        return result.exitCode == 0;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
 }

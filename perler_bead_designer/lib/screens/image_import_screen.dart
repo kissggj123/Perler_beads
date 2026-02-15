@@ -4,7 +4,8 @@ import '../providers/image_processing_provider.dart';
 import '../providers/color_palette_provider.dart';
 import '../models/bead_design.dart';
 import '../models/color_palette.dart';
-import '../services/image_processing_service.dart' show DitheringMode;
+import '../services/image_processing_service.dart'
+    show DitheringMode, AlgorithmStyle, AlgorithmStyleExtension;
 import '../widgets/image_preview_widget.dart';
 import '../widgets/size_settings_widget.dart';
 
@@ -230,12 +231,29 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
               children: [
                 _buildStepIndicator(context, provider),
                 const SizedBox(height: 16),
-                ImagePreviewWidget(
-                  originalImage: provider.flutterOriginalImage,
-                  previewImage: provider.flutterPreviewImage,
-                  outputWidth: provider.outputWidth,
-                  outputHeight: provider.outputHeight,
-                  isLoading: provider.state == ProcessingState.loading,
+                Builder(
+                  builder: (context) {
+                    final paletteProvider = context
+                        .watch<ColorPaletteProvider>();
+                    return ImagePreviewWidget(
+                      originalImage: provider.flutterOriginalImage,
+                      previewImage: provider.flutterPreviewImage,
+                      outputWidth: provider.outputWidth,
+                      outputHeight: provider.outputHeight,
+                      isLoading: provider.state == ProcessingState.loading,
+                      colorPalette: ColorPalette(
+                        id: 'current',
+                        name: '当前调色板',
+                        colors: paletteProvider.allColors,
+                      ),
+                      cellColorProvider: (x, y) {
+                        return provider.getPixelColor(x, y);
+                      },
+                      onCellTap: (cellInfo) {
+                        ColorInfoDialog.show(context, cellInfo);
+                      },
+                    );
+                  },
                 ),
                 const SizedBox(height: 16),
                 SizeSettingsWidget(
@@ -430,6 +448,70 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
               max: 1.0,
               icon: Icons.palette_outlined,
               onChanged: provider.setSaturation,
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text('算法风格', style: Theme.of(context).textTheme.titleSmall),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.outline.withValues(alpha: 0.5),
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<AlgorithmStyle>(
+                  value: provider.algorithmStyle,
+                  isExpanded: true,
+                  icon: const Icon(Icons.arrow_drop_down),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  items: AlgorithmStyle.values.map((style) {
+                    return DropdownMenuItem(
+                      value: style,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            style.displayName,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          Text(
+                            style.description,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (style) {
+                    if (style != null) {
+                      provider.setAlgorithmStyle(style);
+                    }
+                  },
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             const Divider(),

@@ -8,6 +8,8 @@ import '../models/models.dart';
 class SettingsService {
   static const String _themeModeKey = 'theme_mode';
   static const String _defaultPaletteKey = 'default_palette';
+  static const String _exportShowGridKey = 'export_show_grid';
+  static const String _exportPdfIncludeStatsKey = 'export_pdf_include_stats';
 
   SharedPreferences? _prefs;
 
@@ -77,6 +79,22 @@ class SettingsService {
 
   Future<void> clearDefaultPalette() async {
     await prefs.remove(_defaultPaletteKey);
+  }
+
+  bool getExportShowGrid() {
+    return prefs.getBool(_exportShowGridKey) ?? false;
+  }
+
+  Future<void> setExportShowGrid(bool value) async {
+    await prefs.setBool(_exportShowGridKey, value);
+  }
+
+  bool getExportPdfIncludeStats() {
+    return prefs.getBool(_exportPdfIncludeStatsKey) ?? true;
+  }
+
+  Future<void> setExportPdfIncludeStats(bool value) async {
+    await prefs.setBool(_exportPdfIncludeStatsKey, value);
   }
 
   Future<void> setStringSetting(String key, String value) async {

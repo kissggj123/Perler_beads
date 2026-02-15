@@ -41,10 +41,7 @@ class InventoryItemTile extends StatelessWidget {
               width: 100,
               child: _buildQuantityControl(context, isLowStock, isOutOfStock),
             ),
-            SizedBox(
-              width: 100,
-              child: _buildActionButtons(context),
-            ),
+            SizedBox(width: 100, child: _buildActionButtons(context)),
           ],
         ),
       ),
@@ -71,11 +68,7 @@ class InventoryItemTile extends StatelessWidget {
       ),
       child: item.beadColor.isLight
           ? null
-          : Icon(
-              Icons.check,
-              color: Colors.white.withOpacity(0.5),
-              size: 20,
-            ),
+          : Icon(Icons.check, color: Colors.white.withOpacity(0.5), size: 20),
     );
   }
 
@@ -88,16 +81,16 @@ class InventoryItemTile extends StatelessWidget {
           Text(
             item.beadColor.code,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'monospace',
-                ),
+              fontWeight: FontWeight.w600,
+              fontFamily: 'monospace',
+            ),
           ),
           Text(
             item.beadColor.hexCode,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontFamily: 'monospace',
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontFamily: 'monospace',
+            ),
           ),
         ],
       ),
@@ -116,8 +109,8 @@ class InventoryItemTile extends StatelessWidget {
     return Text(
       _getBrandName(item.beadColor.brand),
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
     );
   }
 
@@ -125,12 +118,16 @@ class InventoryItemTile extends StatelessWidget {
     return Text(
       item.beadColor.category ?? '未分类',
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
     );
   }
 
-  Widget _buildQuantityControl(BuildContext context, bool isLowStock, bool isOutOfStock) {
+  Widget _buildQuantityControl(
+    BuildContext context,
+    bool isLowStock,
+    bool isOutOfStock,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
@@ -139,8 +136,8 @@ class InventoryItemTile extends StatelessWidget {
         color: isOutOfStock
             ? colorScheme.errorContainer
             : isLowStock
-                ? colorScheme.tertiaryContainer
-                : colorScheme.surfaceContainerHighest,
+            ? colorScheme.tertiaryContainer
+            : colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -157,13 +154,13 @@ class InventoryItemTile extends StatelessWidget {
           Text(
             '${item.quantity}',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: isOutOfStock
-                      ? colorScheme.onErrorContainer
-                      : isLowStock
-                          ? colorScheme.onTertiaryContainer
-                          : null,
-                ),
+              fontWeight: FontWeight.bold,
+              color: isOutOfStock
+                  ? colorScheme.onErrorContainer
+                  : isLowStock
+                  ? colorScheme.onTertiaryContainer
+                  : null,
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.add, size: 16),
@@ -210,6 +207,10 @@ class InventoryItemTile extends StatelessWidget {
         return 'Hama';
       case BeadBrand.artkal:
         return 'Artkal';
+      case BeadBrand.taobao:
+        return '淘宝';
+      case BeadBrand.pinduoduo:
+        return '拼多多';
       case BeadBrand.generic:
         return '通用';
     }
