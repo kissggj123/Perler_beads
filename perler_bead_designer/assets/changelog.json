@@ -1,6 +1,20 @@
 {
   "versions": [
     {
+      "version": "1.1.0",
+      "date": "2026-02-15",
+      "changes": [
+        "修复任务栏图标显示问题（macOS/Windows）",
+        "修复设置页选项无法修改的问题",
+        "新增上帝模式（连续点击版本号7次解锁）",
+        "新增GPU加速支持（Metal/Vulkan/DirectX）",
+        "新增性能监控功能",
+        "新增界面动画效果（页面切换、卡片交互、列表动画）",
+        "新增动画效果开关选项",
+        "优化Apple Silicon和NVIDIA GPU性能"
+      ]
+    },
+    {
       "version": "1.0.1",
       "date": "2026-02-15",
       "changes": [

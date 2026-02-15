@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/yumikotoys/Documents/瞎鼓捣/Perler_beads/perler_bead_designer/windows/runner",
+      "program": "/Users/yumikotoys/Documents/瞎鼓捣/Perler_beads/perler_bead_designer/windows/runner/build/Debug/outDebug"
+    }
+  ]
+}

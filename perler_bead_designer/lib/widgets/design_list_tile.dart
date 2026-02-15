@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/bead_design.dart';
+import '../utils/animations.dart';
 
 class DesignListTile extends StatefulWidget {
   final BeadDesign design;
@@ -8,6 +9,7 @@ class DesignListTile extends StatefulWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onExport;
   final VoidCallback? onRename;
+  final int? index;
 
   const DesignListTile({
     super.key,
@@ -16,6 +18,7 @@ class DesignListTile extends StatefulWidget {
     this.onDelete,
     this.onExport,
     this.onRename,
+    this.index,
   });
 
   @override
@@ -27,7 +30,7 @@ class _DesignListTileState extends State<DesignListTile> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
+    final card = Card(
       margin: const EdgeInsets.only(bottom: 8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -135,6 +138,14 @@ class _DesignListTileState extends State<DesignListTile> {
         ),
       ),
     );
+
+    if (widget.index != null) {
+      return AnimatedListItem(
+        index: widget.index!,
+        child: card,
+      );
+    }
+    return card;
   }
 
   Widget _buildThumbnail(BuildContext context) {

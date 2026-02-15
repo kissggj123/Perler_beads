@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,8 +7,10 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/data_export_service.dart';
 import '../services/design_storage_service.dart';
+import '../services/performance_service.dart';
 import '../services/settings_service.dart';
 import '../services/storage_service.dart';
+import '../widgets/performance_monitor.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -18,13 +21,25 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   static const String appName = '兔可可的拼豆世界';
-  static const String appVersion = '1.0.1';
+  static const String appVersion = '1.1.0';
   static const String developer = 'BunnyCC';
   static const String copyright =
       'Copyright © 2026 BunnyCC. All rights reserved.';
 
   late bool _exportShowGrid;
   late bool _exportPdfIncludeStats;
+  late int _defaultCanvasWidth;
+  late int _defaultCanvasHeight;
+  late int _lowStockThreshold;
+  late String _defaultExportFormat;
+
+  final PerformanceService _performanceService = PerformanceService();
+  bool _showPerformanceMonitor = false;
+
+  int _versionTapCount = 0;
+  DateTime? _lastVersionTapTime;
+  static const int _godModeTapThreshold = 7;
+  static const Duration _tapTimeout = Duration(seconds: 2);
 
   @override
   void initState() {
@@ -32,6 +47,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settingsService = SettingsService();
     _exportShowGrid = settingsService.getExportShowGrid();
     _exportPdfIncludeStats = settingsService.getExportPdfIncludeStats();
+    _defaultCanvasWidth = settingsService.getDefaultCanvasWidth();
+    _defaultCanvasHeight = settingsService.getDefaultCanvasHeight();
+    _lowStockThreshold = settingsService.getLowStockThreshold();
+    _defaultExportFormat = settingsService.getDefaultExportFormat();
+    _performanceService.initialize();
   }
 
   @override
@@ -60,6 +80,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 32),
             _buildThemeSection(context),
             const SizedBox(height: 24),
+            _buildAnimationSection(context),
+            const SizedBox(height: 24),
             _buildCustomizationSection(context),
             const SizedBox(height: 24),
             _buildExportSection(context),
@@ -67,6 +89,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildDataSection(context),
             const SizedBox(height: 24),
             _buildAboutSection(context),
+            Consumer<AppProvider>(
+              builder: (context, appProvider, child) {
+                if (appProvider.godModeEnabled) {
+                  return Column(
+                    children: [
+                      const SizedBox(height: 24),
+                      _buildGodModeSection(context),
+                    ],
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
           ],
         ),
       ),
@@ -116,6 +151,218 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildAnimationSection(BuildContext context) {
+    final appProvider = context.watch<AppProvider>();
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _SettingsCard(
+      title: '动画效果',
+      icon: Icons.animation,
+      children: [
+        SwitchListTile(
+          secondary: Icon(Icons.motion_photos_on, color: colorScheme.primary),
+          title: const Text('启用动画效果'),
+          subtitle: const Text('关闭后将禁用所有界面动画'),
+          value: appProvider.animationsEnabled,
+          onChanged: (value) {
+            appProvider.setAnimationsEnabled(value);
+          },
+        ),
+        const Divider(),
+        SwitchListTile(
+          secondary: Icon(Icons.swap_horiz, color: colorScheme.secondary),
+          title: const Text('页面切换动画'),
+          subtitle: const Text('页面切换时的过渡动画效果'),
+          value:
+              appProvider.pageTransitionsEnabled &&
+              appProvider.animationsEnabled,
+          onChanged: appProvider.animationsEnabled
+              ? (value) {
+                  appProvider.setPageTransitionsEnabled(value);
+                }
+              : null,
+        ),
+        SwitchListTile(
+          secondary: Icon(Icons.list, color: colorScheme.tertiary),
+          title: const Text('列表项动画'),
+          subtitle: const Text('列表项进入时的动画效果'),
+          value:
+              appProvider.listAnimationsEnabled &&
+              appProvider.animationsEnabled,
+          onChanged: appProvider.animationsEnabled
+              ? (value) {
+                  appProvider.setListAnimationsEnabled(value);
+                }
+              : null,
+        ),
+        SwitchListTile(
+          secondary: Icon(Icons.touch_app, color: colorScheme.primary),
+          title: const Text('按钮点击动画'),
+          subtitle: const Text('按钮按下时的缩放动画效果'),
+          value:
+              appProvider.buttonAnimationsEnabled &&
+              appProvider.animationsEnabled,
+          onChanged: appProvider.animationsEnabled
+              ? (value) {
+                  appProvider.setButtonAnimationsEnabled(value);
+                }
+              : null,
+        ),
+        SwitchListTile(
+          secondary: Icon(Icons.widgets, color: colorScheme.secondary),
+          title: const Text('卡片交互动画'),
+          subtitle: const Text('卡片点击时的动画效果'),
+          value:
+              appProvider.cardAnimationsEnabled &&
+              appProvider.animationsEnabled,
+          onChanged: appProvider.animationsEnabled
+              ? (value) {
+                  appProvider.setCardAnimationsEnabled(value);
+                }
+              : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPerformanceSection(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _SettingsCard(
+      title: '性能设置',
+      icon: Icons.speed,
+      children: [
+        ListTile(
+          leading: Icon(Icons.memory, color: colorScheme.primary),
+          title: const Text('GPU 加速'),
+          subtitle: Text(
+            _performanceService.config.enableGpuAcceleration
+                ? '已启用 - ${PerformanceService.getPlatformDefaultBackend()}'
+                : '已禁用',
+          ),
+          trailing: Switch(
+            value: _performanceService.config.enableGpuAcceleration,
+            onChanged: (value) async {
+              await _performanceService.setEnableGpuAcceleration(value);
+              setState(() {});
+            },
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.tune, color: colorScheme.secondary),
+          title: const Text('性能等级'),
+          subtitle: Text(
+            _getPerformanceLevelLabel(
+              _performanceService.config.performanceLevel,
+            ),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showPerformanceLevelDialog(context),
+        ),
+        ListTile(
+          leading: Icon(Icons.monitor_heart, color: colorScheme.tertiary),
+          title: const Text('性能监控'),
+          subtitle: const Text('显示实时帧率和 GPU 使用率'),
+          trailing: Switch(
+            value: _showPerformanceMonitor,
+            onChanged: (value) {
+              setState(() {
+                _showPerformanceMonitor = value;
+              });
+              if (value) {
+                _performanceService.startMonitoring();
+              } else {
+                _performanceService.stopMonitoring();
+              }
+            },
+          ),
+        ),
+        if (_showPerformanceMonitor) ...[
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: PerformanceStatsPanel(
+              metrics: _performanceService.getCurrentMetrics(),
+            ),
+          ),
+        ],
+        const Divider(),
+        ListTile(
+          leading: Icon(
+            Icons.info_outline,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          title: const Text('渲染引擎状态'),
+          subtitle: Text(PerformanceService.getImpellerStatus()),
+        ),
+        if (Platform.isMacOS || Platform.isWindows) ...[
+          ListTile(
+            leading: Icon(Icons.computer, color: colorScheme.primary),
+            title: Text(Platform.isMacOS ? 'Metal 后端' : 'DirectX/Vulkan 后端'),
+            subtitle: Text(
+              Platform.isMacOS
+                  ? 'Apple Silicon 和 Intel Mac 均支持 Metal 加速'
+                  : '支持 NVIDIA/AMD/Intel 显卡硬件加速',
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _getPerformanceLevelLabel(PerformanceLevel level) {
+    return switch (level) {
+      PerformanceLevel.low => '低功耗 (30 FPS)',
+      PerformanceLevel.medium => '平衡 (60 FPS)',
+      PerformanceLevel.high => '高性能 (60 FPS)',
+      PerformanceLevel.ultra => '极致 (120 FPS)',
+    };
+  }
+
+  void _showPerformanceLevelDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('性能等级'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: PerformanceLevel.values.map((level) {
+            return RadioListTile<PerformanceLevel>(
+              title: Text(_getPerformanceLevelLabel(level)),
+              subtitle: Text(_getPerformanceLevelDescription(level)),
+              value: level,
+              groupValue: _performanceService.config.performanceLevel,
+              onChanged: (value) async {
+                if (value != null) {
+                  await _performanceService.setPerformanceLevel(value);
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext);
+                  }
+                  setState(() {});
+                }
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getPerformanceLevelDescription(PerformanceLevel level) {
+    return switch (level) {
+      PerformanceLevel.low => '适合电池供电或老旧设备',
+      PerformanceLevel.medium => '平衡性能与功耗',
+      PerformanceLevel.high => '推荐设置，最佳体验',
+      PerformanceLevel.ultra => '适合高刷新率显示器',
+    };
+  }
+
   Widget _buildCustomizationSection(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -127,21 +374,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
           leading: Icon(Icons.grid_4x4, color: colorScheme.primary),
           title: const Text('默认画布尺寸'),
           subtitle: const Text('新建设计时的默认尺寸'),
-          trailing: const Text('29 × 29'),
+          trailing: Text('$_defaultCanvasWidth × $_defaultCanvasHeight'),
           onTap: () => _showCanvasSizeDialog(context),
         ),
         ListTile(
           leading: Icon(Icons.inventory, color: colorScheme.secondary),
           title: const Text('低库存阈值'),
           subtitle: const Text('库存低于此数量时显示警告'),
-          trailing: const Text('50'),
+          trailing: Text('$_lowStockThreshold'),
           onTap: () => _showLowStockDialog(context),
         ),
         ListTile(
           leading: Icon(Icons.file_download, color: colorScheme.tertiary),
           title: const Text('默认导出格式'),
           subtitle: const Text('导出设计时的默认格式'),
-          trailing: const Text('PNG'),
+          trailing: Text(_defaultExportFormat.toUpperCase()),
           onTap: () => _showExportFormatDialog(context),
         ),
       ],
@@ -243,6 +490,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildAboutSection(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final appProvider = context.watch<AppProvider>();
 
     return _SettingsCard(
       title: '关于',
@@ -256,7 +504,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ListTile(
           leading: Icon(Icons.verified, color: colorScheme.secondary),
           title: const Text('版本'),
-          subtitle: const Text(appVersion),
+          subtitle: Text(appVersion),
+          onTap: () => _handleVersionTap(context),
         ),
         ListTile(
           leading: Icon(Icons.history, color: colorScheme.tertiary),
@@ -294,7 +543,311 @@ class _SettingsScreenState extends State<SettingsScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showAboutDialog(context),
         ),
+        if (appProvider.godModeEnabled) ...[
+          const Divider(),
+          ListTile(
+            leading: Icon(Icons.admin_panel_settings, color: colorScheme.error),
+            title: Text('上帝模式已启用', style: TextStyle(color: colorScheme.error)),
+            subtitle: const Text('连续点击版本号 7 次可关闭'),
+            onTap: () => _handleVersionTap(context),
+          ),
+        ],
       ],
+    );
+  }
+
+  void _handleVersionTap(BuildContext context) {
+    final appProvider = context.read<AppProvider>();
+    final now = DateTime.now();
+
+    if (_lastVersionTapTime == null ||
+        now.difference(_lastVersionTapTime!) > _tapTimeout) {
+      _versionTapCount = 1;
+    } else {
+      _versionTapCount++;
+    }
+
+    _lastVersionTapTime = now;
+
+    if (_versionTapCount >= _godModeTapThreshold) {
+      _versionTapCount = 0;
+      final newGodModeState = !appProvider.godModeEnabled;
+      appProvider.setGodModeEnabled(newGodModeState);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newGodModeState ? '上帝模式已启用！' : '上帝模式已关闭'),
+          backgroundColor: newGodModeState ? Colors.purple : Colors.grey[700],
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else if (!appProvider.godModeEnabled && _versionTapCount > 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '再点击 ${_godModeTapThreshold - _versionTapCount} 次启用上帝模式',
+          ),
+          duration: const Duration(milliseconds: 500),
+        ),
+      );
+    }
+  }
+
+  Widget _buildGodModeSection(BuildContext context) {
+    final appProvider = context.watch<AppProvider>();
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _SettingsCard(
+      title: '上帝模式',
+      icon: Icons.admin_panel_settings,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          color: colorScheme.errorContainer.withValues(alpha: 0.3),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber, color: colorScheme.error, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '高级设置选项，仅供开发者使用',
+                  style: TextStyle(
+                    color: colorScheme.onErrorContainer,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SwitchListTile(
+          secondary: Icon(Icons.bug_report, color: colorScheme.primary),
+          title: const Text('调试模式'),
+          subtitle: const Text('启用详细日志和调试信息'),
+          value: appProvider.debugModeEnabled,
+          onChanged: (value) {
+            appProvider.setDebugModeEnabled(value);
+          },
+        ),
+        SwitchListTile(
+          secondary: Icon(Icons.monitor_heart, color: colorScheme.secondary),
+          title: const Text('性能监控'),
+          subtitle: const Text('显示实时性能指标'),
+          value: appProvider.performanceMonitorEnabled,
+          onChanged: (value) {
+            appProvider.setPerformanceMonitorEnabled(value);
+            setState(() {
+              _showPerformanceMonitor = value;
+            });
+            if (value) {
+              _performanceService.startMonitoring();
+            } else {
+              _performanceService.stopMonitoring();
+            }
+          },
+        ),
+        if (_showPerformanceMonitor) ...[
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: PerformanceStatsPanel(
+              metrics: _performanceService.getCurrentMetrics(),
+            ),
+          ),
+        ],
+        SwitchListTile(
+          secondary: Icon(Icons.science, color: colorScheme.tertiary),
+          title: const Text('实验性功能'),
+          subtitle: const Text('启用未稳定的新功能'),
+          value: appProvider.experimentalFeaturesEnabled,
+          onChanged: (value) {
+            appProvider.setExperimentalFeaturesEnabled(value);
+          },
+        ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.speed, color: colorScheme.primary),
+          title: const Text('性能设置'),
+          subtitle: const Text('GPU加速、性能等级等'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showGodModePerformanceSettings(context),
+        ),
+        ListTile(
+          leading: Icon(Icons.animation, color: colorScheme.secondary),
+          title: const Text('动画控制'),
+          subtitle: const Text('全局动画效果开关'),
+          trailing: Switch(
+            value: appProvider.animationsEnabled,
+            onChanged: (value) {
+              appProvider.setAnimationsEnabled(value);
+            },
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.developer_mode, color: colorScheme.tertiary),
+          title: const Text('开发者选项'),
+          subtitle: const Text('查看应用内部状态'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showDeveloperOptions(context),
+        ),
+      ],
+    );
+  }
+
+  void _showGodModePerformanceSettings(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('性能设置'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.memory),
+                title: const Text('GPU 加速'),
+                subtitle: Text(
+                  _performanceService.config.enableGpuAcceleration
+                      ? '已启用 - ${PerformanceService.getPlatformDefaultBackend()}'
+                      : '已禁用',
+                ),
+                trailing: Switch(
+                  value: _performanceService.config.enableGpuAcceleration,
+                  onChanged: (value) async {
+                    await _performanceService.setEnableGpuAcceleration(value);
+                    Navigator.pop(context);
+                    _showGodModePerformanceSettings(context);
+                  },
+                ),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.tune),
+                title: const Text('性能等级'),
+                subtitle: Text(
+                  _getPerformanceLevelLabel(
+                    _performanceService.config.performanceLevel,
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showPerformanceLevelDialog(this.context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('渲染引擎'),
+                subtitle: Text(PerformanceService.getImpellerStatus()),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeveloperOptions(BuildContext context) {
+    final appProvider = context.watch<AppProvider>();
+    final settingsService = SettingsService();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('开发者选项'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '应用状态',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _buildDeveloperInfoRow(
+                '上帝模式',
+                appProvider.godModeEnabled ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '调试模式',
+                appProvider.debugModeEnabled ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '动画状态',
+                appProvider.animationsEnabled ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow('主题模式', appProvider.themeMode.name),
+              const Divider(),
+              Text(
+                '存储信息',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _buildDeveloperInfoRow(
+                '设置已初始化',
+                settingsService.containsKey('theme_mode') ? '是' : '否',
+              ),
+              const Divider(),
+              Text(
+                '性能信息',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _buildDeveloperInfoRow(
+                'GPU加速',
+                _performanceService.config.enableGpuAcceleration ? '启用' : '禁用',
+              ),
+              _buildDeveloperInfoRow(
+                '性能等级',
+                _getPerformanceLevelLabel(
+                  _performanceService.config.performanceLevel,
+                ),
+              ),
+              _buildDeveloperInfoRow(
+                '渲染引擎',
+                PerformanceService.getImpellerStatus(),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeveloperInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 13)),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
     );
   }
 
@@ -321,8 +874,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showCanvasSizeDialog(BuildContext context) {
-    final widthController = TextEditingController(text: '29');
-    final heightController = TextEditingController(text: '29');
+    final widthController = TextEditingController(
+      text: _defaultCanvasWidth.toString(),
+    );
+    final heightController = TextEditingController(
+      text: _defaultCanvasHeight.toString(),
+    );
 
     showDialog(
       context: context,
@@ -338,6 +895,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
             ),
             const SizedBox(width: 16),
@@ -349,6 +907,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
             ),
           ],
@@ -359,7 +918,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              final width = int.tryParse(widthController.text) ?? 29;
+              final height = int.tryParse(heightController.text) ?? 29;
+              final settingsService = SettingsService();
+              await settingsService.setDefaultCanvasWidth(width);
+              await settingsService.setDefaultCanvasHeight(height);
+              if (context.mounted) {
+                Navigator.pop(context);
+                setState(() {
+                  _defaultCanvasWidth = width;
+                  _defaultCanvasHeight = height;
+                });
+              }
+            },
             child: const Text('保存'),
           ),
         ],
@@ -368,7 +940,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showLowStockDialog(BuildContext context) {
-    final controller = TextEditingController(text: '50');
+    final controller = TextEditingController(
+      text: _lowStockThreshold.toString(),
+    );
 
     showDialog(
       context: context,
@@ -382,6 +956,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             suffixText: '颗',
           ),
           keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         ),
         actions: [
           TextButton(
@@ -389,7 +964,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              final threshold = int.tryParse(controller.text) ?? 50;
+              final settingsService = SettingsService();
+              await settingsService.setLowStockThreshold(threshold);
+              if (context.mounted) {
+                Navigator.pop(context);
+                setState(() {
+                  _lowStockThreshold = threshold;
+                });
+              }
+            },
             child: const Text('保存'),
           ),
         ],
@@ -402,24 +987,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('默认导出格式'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<String>(
-              title: const Text('PNG'),
-              subtitle: const Text('适合屏幕显示和分享'),
-              value: 'png',
-              groupValue: 'png',
-              onChanged: (value) => Navigator.pop(context),
-            ),
-            RadioListTile<String>(
-              title: const Text('PDF'),
-              subtitle: const Text('适合打印输出'),
-              value: 'pdf',
-              groupValue: 'png',
-              onChanged: (value) => Navigator.pop(context),
-            ),
-          ],
+        content: RadioGroup<String>(
+          groupValue: _defaultExportFormat,
+          onChanged: (value) async {
+            if (value != null) {
+              final settingsService = SettingsService();
+              await settingsService.setDefaultExportFormat(value);
+              if (context.mounted) {
+                Navigator.pop(context);
+                setState(() {
+                  _defaultExportFormat = value;
+                });
+              }
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RadioListTile<String>(
+                title: const Text('PNG'),
+                subtitle: const Text('适合屏幕显示和分享'),
+                value: 'png',
+              ),
+              RadioListTile<String>(
+                title: const Text('PDF'),
+                subtitle: const Text('适合打印输出'),
+                value: 'pdf',
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(

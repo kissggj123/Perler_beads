@@ -8,5 +8,9 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<key>com.apple.security.device.gpu</key>
+	<true/>
+	<key>com.apple.security.device.metal</key>
+	<true/>
 </dict>
 </plist>

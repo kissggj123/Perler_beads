@@ -30,10 +30,19 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_BUILD=${FLUTT
 # Disable Windows macros that collide with C++ standard library functions.
 target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 
+# GPU acceleration definitions
+target_compile_definitions(${BINARY_NAME} PRIVATE "GPU_ACCELERATION_ENABLED")
+target_compile_definitions(${BINARY_NAME} PRIVATE "DIRECTX_SUPPORT")
+target_compile_definitions(${BINARY_NAME} PRIVATE "VULKAN_SUPPORT")
+
 # Add dependency libraries and include directories. Add any application-specific
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "d3d11.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "d3d12.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "dxgi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "dxguid.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

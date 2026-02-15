@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../providers/inventory_provider.dart';
+import '../utils/animations.dart';
 import '../widgets/add_inventory_dialog.dart';
 import '../widgets/import_inventory_dialog.dart';
 import '../widgets/inventory_item_tile.dart';
@@ -43,7 +44,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           _buildHeader(context, inventoryProvider),
           Expanded(
             child: inventoryProvider.isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: LoadingAnimation())
                 : _buildContent(context, inventoryProvider),
           ),
         ],
@@ -270,6 +271,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
               final item = items[index];
               return InventoryItemTile(
                 item: item,
+                index: index,
                 lowStockThreshold: provider.lowStockThreshold,
                 onEdit: () => _showEditDialog(context, provider, item),
                 onDelete: () => _confirmDelete(context, provider, item),

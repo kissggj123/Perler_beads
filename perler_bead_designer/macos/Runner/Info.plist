@@ -28,5 +28,17 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>MetalCaptureEnabled</key>
+	<true/>
+	<key>MetalDebugEnabled</key>
+	<false/>
+	<key>GPUSelectionPolicy</key>
+	<string>preferRemovable</string>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>CSResourcesFileMapped</key>
+	<true/>
 </dict>
 </plist>

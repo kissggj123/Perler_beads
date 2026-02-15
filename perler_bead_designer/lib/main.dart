@@ -6,6 +6,7 @@ import 'providers/color_palette_provider.dart';
 import 'providers/inventory_provider.dart';
 import 'providers/plugin_provider.dart';
 import 'screens/main_layout.dart';
+import 'services/performance_service.dart';
 import 'services/settings_service.dart';
 import 'services/storage_service.dart';
 
@@ -18,17 +19,25 @@ void main() async {
   final storageService = StorageService();
   await storageService.initialize();
 
-  runApp(PerlerBeadDesignerApp(
-    settingsService: settingsService,
-  ));
+  final performanceService = PerformanceService();
+  await performanceService.initialize();
+
+  runApp(
+    PerlerBeadDesignerApp(
+      settingsService: settingsService,
+      performanceService: performanceService,
+    ),
+  );
 }
 
 class PerlerBeadDesignerApp extends StatelessWidget {
   final SettingsService settingsService;
+  final PerformanceService performanceService;
 
   const PerlerBeadDesignerApp({
     super.key,
     required this.settingsService,
+    required this.performanceService,
   });
 
   @override
@@ -36,7 +45,8 @@ class PerlerBeadDesignerApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => AppProvider(settingsService: settingsService)..initialize(),
+          create: (_) =>
+              AppProvider(settingsService: settingsService)..initialize(),
         ),
         ChangeNotifierProvider(
           create: (_) => ColorPaletteProvider()..loadDefaultPalette(),
@@ -44,9 +54,8 @@ class PerlerBeadDesignerApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => InventoryProvider()..loadInventory(),
         ),
-        ChangeNotifierProvider(
-          create: (_) => PluginProvider(),
-        ),
+        ChangeNotifierProvider(create: (_) => PluginProvider()),
+        ChangeNotifierProvider.value(value: performanceService),
       ],
       child: Consumer<AppProvider>(
         builder: (context, appProvider, _) {
@@ -82,42 +91,31 @@ class PerlerBeadDesignerApp extends StatelessWidget {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: colorScheme.outlineVariant,
-            width: 1,
-          ),
+          side: BorderSide(color: colorScheme.outlineVariant, width: 1),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: colorScheme.outline),
@@ -138,9 +136,7 @@ class PerlerBeadDesignerApp extends StatelessWidget {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -164,42 +160,31 @@ class PerlerBeadDesignerApp extends StatelessWidget {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: colorScheme.outlineVariant,
-            width: 1,
-          ),
+          side: BorderSide(color: colorScheme.outlineVariant, width: 1),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: colorScheme.surfaceContainerHighest,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: colorScheme.outline),
@@ -220,9 +205,7 @@ class PerlerBeadDesignerApp extends StatelessWidget {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../utils/animations.dart';
 
 class InventoryItemTile extends StatelessWidget {
   final InventoryItem item;
@@ -8,6 +9,7 @@ class InventoryItemTile extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final void Function(int) onQuantityChanged;
+  final int? index;
 
   const InventoryItemTile({
     super.key,
@@ -16,6 +18,7 @@ class InventoryItemTile extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onQuantityChanged,
+    this.index,
   });
 
   @override
@@ -24,7 +27,7 @@ class InventoryItemTile extends StatelessWidget {
     final isLowStock = item.quantity <= lowStockThreshold && item.quantity > 0;
     final isOutOfStock = item.quantity <= 0;
 
-    return Card(
+    final card = Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -46,6 +49,11 @@ class InventoryItemTile extends StatelessWidget {
         ),
       ),
     );
+
+    if (index != null) {
+      return AnimatedListItem(index: index!, child: card);
+    }
+    return card;
   }
 
   Widget _buildColorPreview(BuildContext context) {

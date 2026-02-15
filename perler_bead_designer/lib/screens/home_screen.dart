@@ -6,6 +6,7 @@ import '../providers/app_provider.dart';
 import '../providers/color_palette_provider.dart';
 import '../providers/inventory_provider.dart';
 import '../services/design_storage_service.dart';
+import '../utils/animations.dart';
 import '../widgets/design_list_tile.dart';
 import 'design_editor_screen.dart';
 import 'image_import_screen.dart';
@@ -106,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: LoadingAnimation())
           : RefreshIndicator(
               onRefresh: _loadData,
               child: SingleChildScrollView(
@@ -132,51 +133,53 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildWelcomeHeader(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            colorScheme.primaryContainer,
-            colorScheme.primaryContainer.withValues(alpha: 0.7),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return FadeInWidget(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              colorScheme.primaryContainer,
+              colorScheme.primaryContainer.withValues(alpha: 0.7),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
         ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '欢迎使用兔可可的拼豆世界',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '开始创建您的拼豆作品，释放无限创意',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onPrimaryContainer.withValues(
-                      alpha: 0.8,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '欢迎使用兔可可的拼豆世界',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      color: colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    '开始创建您的拼豆作品，释放无限创意',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: colorScheme.onPrimaryContainer.withValues(
+                        alpha: 0.8,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Icon(
-            Icons.grid_on,
-            size: 80,
-            color: colorScheme.onPrimaryContainer.withValues(alpha: 0.3),
-          ),
-        ],
+            Icon(
+              Icons.grid_on,
+              size: 80,
+              color: colorScheme.onPrimaryContainer.withValues(alpha: 0.3),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -197,7 +200,9 @@ class _HomeScreenState extends State<HomeScreen> {
         Row(
           children: [
             Expanded(
-              child: _ActionCard(
+              child: SlideInWidget(
+                delay: const Duration(milliseconds: 100),
+                child: _ActionCard(
                 icon: Icons.add,
                 title: '新建设计',
                 subtitle: '创建空白设计画布',
@@ -205,9 +210,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: _createNewDesign,
               ),
             ),
+            ),
             const SizedBox(width: 16),
             Expanded(
-              child: _ActionCard(
+              child: SlideInWidget(
+                delay: const Duration(milliseconds: 200),
+                child: _ActionCard(
                 icon: Icons.image,
                 title: '导入图片',
                 subtitle: '从图片生成设计',
@@ -215,15 +223,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: _importImage,
               ),
             ),
+            ),
             const SizedBox(width: 16),
             Expanded(
-              child: _ActionCard(
+              child: SlideInWidget(
+                delay: const Duration(milliseconds: 300),
+                child: _ActionCard(
                 icon: Icons.inventory_2,
                 title: '库存管理',
                 subtitle: '管理拼豆库存',
                 color: colorScheme.tertiary,
                 onTap: _navigateToInventory,
               ),
+            ),
             ),
           ],
         ),
@@ -293,6 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
               final design = _recentDesigns[index];
               return DesignListTile(
                 design: design,
+                index: index,
                 onTap: () => _openDesignEditor(design),
                 onDelete: () async {
                   await _designStorageService.deleteDesign(design.id);
@@ -439,10 +452,10 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
+    return AnimatedCard(
+      onTap: onTap,
+      child: Card(
+        clipBehavior: Clip.antiAlias,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(

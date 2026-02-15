@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/bead_color.dart';
 import '../providers/app_provider.dart';
 import '../providers/color_palette_provider.dart';
+import '../utils/animations.dart';
 import '../widgets/app_drawer.dart';
 import 'home_screen.dart';
 import 'inventory_screen.dart';
@@ -37,7 +38,12 @@ class MainLayout extends StatelessWidget {
               width: 1,
               color: colorScheme.outlineVariant,
             ),
-            Expanded(child: pages[currentIndex]),
+            Expanded(
+              child: _AnimatedPageSwitcher(
+                currentIndex: currentIndex,
+                pages: pages,
+              ),
+            ),
           ],
         ),
       );
@@ -50,7 +56,7 @@ class MainLayout extends StatelessWidget {
         surfaceTintColor: colorScheme.surfaceTint,
       ),
       drawer: const AppDrawer(),
-      body: pages[currentIndex],
+      body: _AnimatedPageSwitcher(currentIndex: currentIndex, pages: pages),
     );
   }
 
@@ -106,6 +112,54 @@ class MainLayout extends StatelessWidget {
           orElse: () => AppPage.home,
         )
         .label;
+  }
+}
+
+class _AnimatedPageSwitcher extends StatelessWidget {
+  final int currentIndex;
+  final List<Widget> pages;
+
+  const _AnimatedPageSwitcher({
+    required this.currentIndex,
+    required this.pages,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final appProvider = context.watch<AppProvider>();
+
+    if (!appProvider.pageTransitionsEnabled || !appProvider.animationsEnabled) {
+      return pages[currentIndex];
+    }
+
+    return AnimatedSwitcher(
+      duration: AnimationConfig.defaultDuration,
+      switchInCurve: AnimationConfig.enterCurve,
+      switchOutCurve: AnimationConfig.exitCurve,
+      transitionBuilder: (child, animation) {
+        final slideTween = Tween<Offset>(
+          begin: const Offset(0.05, 0.0),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: AnimationConfig.enterCurve));
+
+        final fadeTween = Tween<double>(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: AnimationConfig.enterCurve));
+
+        return SlideTransition(
+          position: animation.drive(slideTween),
+          child: FadeTransition(
+            opacity: animation.drive(fadeTween),
+            child: child,
+          ),
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey(currentIndex),
+        child: pages[currentIndex],
+      ),
+    );
   }
 }
 
@@ -404,12 +458,15 @@ class _ColorPaletteScreenState extends State<_ColorPaletteScreen> {
       itemBuilder: (context, index) {
         final color = colors[index];
         final isCustom = provider.hasCustomColor(color.code);
-        return _ColorCard(
-          color: color,
-          isCustom: isCustom,
-          onDelete: isCustom
-              ? () => _confirmDeleteColor(context, provider, color)
-              : null,
+        return AnimatedListItem(
+          index: index,
+          child: _ColorCard(
+            color: color,
+            isCustom: isCustom,
+            onDelete: isCustom
+                ? () => _confirmDeleteColor(context, provider, color)
+                : null,
+          ),
         );
       },
     );
@@ -633,19 +690,19 @@ class _ColorCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isLight = color.isLight;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isCustom ? colorScheme.primary : colorScheme.outlineVariant,
-          width: isCustom ? 2 : 1,
+    return AnimatedCard(
+      onTap: () => _showColorDetails(context),
+      onLongPress: onDelete,
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isCustom ? colorScheme.primary : colorScheme.outlineVariant,
+            width: isCustom ? 2 : 1,
+          ),
         ),
-      ),
-      child: InkWell(
-        onTap: () => _showColorDetails(context),
-        onLongPress: onDelete,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
