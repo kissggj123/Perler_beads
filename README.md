@@ -109,20 +109,6 @@ flutter build windows --release  # Windows
 
 ---
 
-## 📸 截图
-
-<p align="center">
-  <img src="docs/screenshots/home.png" alt="首页" width="45%">
-  <img src="docs/screenshots/editor.png" alt="编辑器" width="45%">
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/inventory.png" alt="库存管理" width="45%">
-  <img src="docs/screenshots/import.png" alt="图片导入" width="45%">
-</p>
-
----
-
 ## ⌨️ 快捷键
 
 | 快捷键   | 功能     |
