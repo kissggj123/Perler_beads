@@ -61,9 +61,9 @@ class ToolBarWidget extends StatelessWidget {
               children: [
                 Text(
                   design?.name ?? '未命名设计',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 if (isDirty)
                   Padding(
@@ -82,8 +82,8 @@ class ToolBarWidget extends StatelessWidget {
               Text(
                 '${design.width} × ${design.height}',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
           ],
         ),
@@ -91,7 +91,11 @@ class ToolBarWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildToolButtons(BuildContext context, DesignEditorProvider provider) {
+  Widget _buildToolButtons(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
+    final isPreviewMode = provider.isPreviewMode;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -101,6 +105,7 @@ class ToolBarWidget extends StatelessWidget {
           label: '绘制',
           shortcut: 'D',
           isSelected: provider.toolMode == ToolMode.draw,
+          isDisabled: isPreviewMode,
           onPressed: () => provider.setToolMode(ToolMode.draw),
         ),
         const SizedBox(width: 4),
@@ -110,6 +115,7 @@ class ToolBarWidget extends StatelessWidget {
           label: '擦除',
           shortcut: 'E',
           isSelected: provider.toolMode == ToolMode.erase,
+          isDisabled: isPreviewMode,
           onPressed: () => provider.setToolMode(ToolMode.erase),
         ),
         const SizedBox(width: 4),
@@ -119,6 +125,7 @@ class ToolBarWidget extends StatelessWidget {
           label: '填充',
           shortcut: 'F',
           isSelected: provider.toolMode == ToolMode.fill,
+          isDisabled: isPreviewMode,
           onPressed: () => provider.setToolMode(ToolMode.fill),
         ),
       ],
@@ -131,39 +138,41 @@ class ToolBarWidget extends StatelessWidget {
     required String label,
     String? shortcut,
     required bool isSelected,
+    bool isDisabled = false,
     required VoidCallback onPressed,
   }) {
+    final effectiveOnPressed = isDisabled ? null : onPressed;
+    final effectiveColor = isDisabled
+        ? Theme.of(context).disabledColor
+        : (isSelected
+              ? Theme.of(context).colorScheme.onPrimaryContainer
+              : Theme.of(context).colorScheme.onSurface);
+
     return Tooltip(
       message: shortcut != null ? '$label ($shortcut)' : label,
       child: Material(
-        color: isSelected
+        color: isSelected && !isDisabled
             ? Theme.of(context).colorScheme.primaryContainer
             : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          onTap: onPressed,
+          onTap: effectiveOnPressed,
           borderRadius: BorderRadius.circular(8),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  icon,
-                  size: 20,
-                  color: isSelected
-                      ? Theme.of(context).colorScheme.onPrimaryContainer
-                      : Theme.of(context).colorScheme.onSurface,
-                ),
+                Icon(icon, size: 20, color: effectiveColor),
                 const SizedBox(width: 4),
                 Text(
                   label,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: isSelected
-                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                            : Theme.of(context).colorScheme.onSurface,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
+                    color: effectiveColor,
+                    fontWeight: isSelected && !isDisabled
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
                 ),
               ],
             ),
@@ -173,7 +182,10 @@ class ToolBarWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, DesignEditorProvider provider) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -241,7 +253,10 @@ class ToolBarWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickActions(BuildContext context, DesignEditorProvider provider) {
+  Widget _buildQuickActions(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -258,7 +273,10 @@ class ToolBarWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildViewOptions(BuildContext context, DesignEditorProvider provider) {
+  Widget _buildViewOptions(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -276,6 +294,137 @@ class ToolBarWidget extends StatelessWidget {
           label: '坐标',
           isEnabled: provider.showCoordinates,
           onPressed: provider.toggleCoordinates,
+        ),
+        const SizedBox(width: 4),
+        _buildToggleOption(
+          context,
+          icon: Icons.preview,
+          label: '预览',
+          isEnabled: provider.isPreviewMode,
+          onPressed: provider.togglePreviewMode,
+        ),
+        const SizedBox(width: 8),
+        const VerticalDivider(width: 1),
+        const SizedBox(width: 8),
+        _buildZoomControls(context, provider),
+        const SizedBox(width: 8),
+        _buildMoveControls(context, provider),
+      ],
+    );
+  }
+
+  Widget _buildZoomControls(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
+    final scale = provider.canvasTransform.scale;
+    final scalePercent = (scale * 100).round();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: '缩小 (${provider.shortcutSettings.zoomOut})',
+          child: InkWell(
+            onTap: () => provider.zoomCanvas(-DesignEditorProvider.zoomStep),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: const Icon(Icons.remove, size: 18),
+            ),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            '$scalePercent%',
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+        ),
+        Tooltip(
+          message: '放大 (${provider.shortcutSettings.zoomIn})',
+          child: InkWell(
+            onTap: () => provider.zoomCanvas(DesignEditorProvider.zoomStep),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: const Icon(Icons.add, size: 18),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Tooltip(
+          message: '重置视图 (${provider.shortcutSettings.resetView})',
+          child: InkWell(
+            onTap: () => provider.resetCanvasTransform(),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: const Icon(Icons.fit_screen, size: 18),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMoveControls(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: '左移 (${provider.shortcutSettings.moveLeft})',
+          child: InkWell(
+            onTap: () => provider.moveCanvas(DesignEditorProvider.moveStep, 0),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: const Icon(Icons.arrow_left, size: 18),
+            ),
+          ),
+        ),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Tooltip(
+              message: '上移 (${provider.shortcutSettings.moveUp})',
+              child: InkWell(
+                onTap: () =>
+                    provider.moveCanvas(0, DesignEditorProvider.moveStep),
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  child: const Icon(Icons.arrow_drop_up, size: 18),
+                ),
+              ),
+            ),
+            Tooltip(
+              message: '下移 (${provider.shortcutSettings.moveDown})',
+              child: InkWell(
+                onTap: () =>
+                    provider.moveCanvas(0, -DesignEditorProvider.moveStep),
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  child: const Icon(Icons.arrow_drop_down, size: 18),
+                ),
+              ),
+            ),
+          ],
+        ),
+        Tooltip(
+          message: '右移 (${provider.shortcutSettings.moveRight})',
+          child: InkWell(
+            onTap: () => provider.moveCanvas(-DesignEditorProvider.moveStep, 0),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              child: const Icon(Icons.arrow_right, size: 18),
+            ),
+          ),
         ),
       ],
     );
@@ -314,10 +463,10 @@ class ToolBarWidget extends StatelessWidget {
                 Text(
                   label,
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: isEnabled
-                            ? Theme.of(context).colorScheme.onSecondaryContainer
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: isEnabled
+                        ? Theme.of(context).colorScheme.onSecondaryContainer
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -327,7 +476,10 @@ class ToolBarWidget extends StatelessWidget {
     );
   }
 
-  void _showClearConfirmDialog(BuildContext context, DesignEditorProvider provider) {
+  void _showClearConfirmDialog(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -350,12 +502,17 @@ class ToolBarWidget extends StatelessWidget {
     );
   }
 
-  void _showFillAllConfirmDialog(BuildContext context, DesignEditorProvider provider) {
+  void _showFillAllConfirmDialog(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('填充全部'),
-        content: Text('确定要用当前颜色填充整个画布吗？\n颜色: ${provider.selectedColor?.name ?? "未选择"}'),
+        content: Text(
+          '确定要用当前颜色填充整个画布吗？\n颜色: ${provider.selectedColor?.name ?? "未选择"}',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),

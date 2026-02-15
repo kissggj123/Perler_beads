@@ -239,6 +239,12 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSlowAnimationSpeedImmediate(double speed) {
+    if (_slowAnimationSpeed == speed) return;
+    _slowAnimationSpeed = speed;
+    notifyListeners();
+  }
+
   Future<void> setSlowAnimationSpeed(double speed) async {
     if (_slowAnimationSpeed == speed) return;
     _slowAnimationSpeed = speed;

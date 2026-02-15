@@ -14,6 +14,96 @@ enum DitheringMode { none, floydSteinberg, ordered }
 
 enum AlgorithmStyle { pixelArt, cartoon, realistic }
 
+enum ExperimentalEffect {
+  none,
+  mosaic,
+  oilPainting,
+  sketch,
+  neon,
+  posterize,
+  emboss,
+  vintage,
+  pixelate,
+  watercolor,
+}
+
+extension ExperimentalEffectExtension on ExperimentalEffect {
+  String get displayName {
+    switch (this) {
+      case ExperimentalEffect.none:
+        return '无效果';
+      case ExperimentalEffect.mosaic:
+        return '马赛克';
+      case ExperimentalEffect.oilPainting:
+        return '油画';
+      case ExperimentalEffect.sketch:
+        return '素描';
+      case ExperimentalEffect.neon:
+        return '霓虹';
+      case ExperimentalEffect.posterize:
+        return '海报化';
+      case ExperimentalEffect.emboss:
+        return '浮雕';
+      case ExperimentalEffect.vintage:
+        return '复古';
+      case ExperimentalEffect.pixelate:
+        return '像素化';
+      case ExperimentalEffect.watercolor:
+        return '水彩';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case ExperimentalEffect.none:
+        return '保持原始效果';
+      case ExperimentalEffect.mosaic:
+        return '将图像分割成小块，每块使用平均颜色';
+      case ExperimentalEffect.oilPainting:
+        return '模拟油画笔触效果';
+      case ExperimentalEffect.sketch:
+        return '将图像转换为铅笔素描风格';
+      case ExperimentalEffect.neon:
+        return '添加发光霓虹灯效果';
+      case ExperimentalEffect.posterize:
+        return '减少颜色层次，产生海报效果';
+      case ExperimentalEffect.emboss:
+        return '创建浮雕立体效果';
+      case ExperimentalEffect.vintage:
+        return '添加复古怀旧滤镜';
+      case ExperimentalEffect.pixelate:
+        return '大像素块效果';
+      case ExperimentalEffect.watercolor:
+        return '模拟水彩画效果';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case ExperimentalEffect.none:
+        return Icons.block;
+      case ExperimentalEffect.mosaic:
+        return Icons.grid_on;
+      case ExperimentalEffect.oilPainting:
+        return Icons.brush;
+      case ExperimentalEffect.sketch:
+        return Icons.draw;
+      case ExperimentalEffect.neon:
+        return Icons.lightbulb;
+      case ExperimentalEffect.posterize:
+        return Icons.filter_b_and_w;
+      case ExperimentalEffect.emboss:
+        return Icons.layers;
+      case ExperimentalEffect.vintage:
+        return Icons.camera_alt;
+      case ExperimentalEffect.pixelate:
+        return Icons.apps;
+      case ExperimentalEffect.watercolor:
+        return Icons.water_drop;
+    }
+  }
+}
+
 class ImageLoadResult {
   final img.Image image;
   final int originalWidth;
@@ -880,6 +970,450 @@ class ImageProcessingService {
             smoothedG.clamp(0, 255),
             smoothedB.clamp(0, 255),
           ),
+        );
+      }
+    }
+
+    return result;
+  }
+
+  img.Image applyExperimentalEffect(
+    img.Image image,
+    ExperimentalEffect effect, {
+    double intensity = 1.0,
+  }) {
+    switch (effect) {
+      case ExperimentalEffect.none:
+        return image;
+      case ExperimentalEffect.mosaic:
+        return _applyMosaicEffect(
+          image,
+          blockSize: (8 * intensity).round().clamp(4, 32),
+        );
+      case ExperimentalEffect.oilPainting:
+        return _applyOilPaintingEffect(
+          image,
+          radius: (3 * intensity).round().clamp(1, 8),
+        );
+      case ExperimentalEffect.sketch:
+        return _applySketchEffect(image, intensity: intensity);
+      case ExperimentalEffect.neon:
+        return _applyNeonEffect(image, intensity: intensity);
+      case ExperimentalEffect.posterize:
+        return _applyPosterizeEffect(
+          image,
+          levels: (4 + (1 - intensity) * 4).round().clamp(2, 8),
+        );
+      case ExperimentalEffect.emboss:
+        return _applyEmbossEffect(image, strength: intensity);
+      case ExperimentalEffect.vintage:
+        return _applyVintageEffect(image, intensity: intensity);
+      case ExperimentalEffect.pixelate:
+        return _applyPixelateEffect(
+          image,
+          blockSize: (4 + 8 * intensity).round().clamp(2, 16),
+        );
+      case ExperimentalEffect.watercolor:
+        return _applyWatercolorEffect(image, intensity: intensity);
+    }
+  }
+
+  img.Image _applyMosaicEffect(img.Image image, {int blockSize = 8}) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int by = 0; by < image.height; by += blockSize) {
+      for (int bx = 0; bx < image.width; bx += blockSize) {
+        int totalR = 0, totalG = 0, totalB = 0;
+        int count = 0;
+
+        for (int y = by; y < by + blockSize && y < image.height; y++) {
+          for (int x = bx; x < bx + blockSize && x < image.width; x++) {
+            final pixel = image.getPixel(x, y);
+            totalR += pixel.r.toInt();
+            totalG += pixel.g.toInt();
+            totalB += pixel.b.toInt();
+            count++;
+          }
+        }
+
+        if (count > 0) {
+          final avgR = (totalR / count).round().clamp(0, 255);
+          final avgG = (totalG / count).round().clamp(0, 255);
+          final avgB = (totalB / count).round().clamp(0, 255);
+
+          for (int y = by; y < by + blockSize && y < image.height; y++) {
+            for (int x = bx; x < bx + blockSize && x < image.width; x++) {
+              result.setPixel(x, y, img.ColorRgb8(avgR, avgG, avgB));
+            }
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _applyOilPaintingEffect(img.Image image, {int radius = 3}) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final intensityCount = List<int>.filled(256, 0);
+        final avgR = List<int>.filled(256, 0);
+        final avgG = List<int>.filled(256, 0);
+        final avgB = List<int>.filled(256, 0);
+
+        for (int ky = -radius; ky <= radius; ky++) {
+          for (int kx = -radius; kx <= radius; kx++) {
+            final nx = (x + kx).clamp(0, image.width - 1);
+            final ny = (y + ky).clamp(0, image.height - 1);
+
+            final pixel = image.getPixel(nx, ny);
+            final r = pixel.r.toInt();
+            final g = pixel.g.toInt();
+            final b = pixel.b.toInt();
+
+            final intensity = ((r + g + b) / 3).round().clamp(0, 255);
+            intensityCount[intensity]++;
+            avgR[intensity] += r;
+            avgG[intensity] += g;
+            avgB[intensity] += b;
+          }
+        }
+
+        int maxCount = 0;
+        int maxIndex = 0;
+        for (int i = 0; i < 256; i++) {
+          if (intensityCount[i] > maxCount) {
+            maxCount = intensityCount[i];
+            maxIndex = i;
+          }
+        }
+
+        if (maxCount > 0) {
+          final r = (avgR[maxIndex] / maxCount).round().clamp(0, 255);
+          final g = (avgG[maxIndex] / maxCount).round().clamp(0, 255);
+          final b = (avgB[maxIndex] / maxCount).round().clamp(0, 255);
+          result.setPixel(x, y, img.ColorRgb8(r, g, b));
+        }
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _applySketchEffect(img.Image image, {double intensity = 1.0}) {
+    final gray = img.Image(width: image.width, height: image.height);
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        final grayValue = (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b)
+            .round()
+            .clamp(0, 255);
+        gray.setPixel(x, y, img.ColorRgb8(grayValue, grayValue, grayValue));
+      }
+    }
+
+    final inverted = img.Image(width: image.width, height: image.height);
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = gray.getPixel(x, y);
+        final inv = 255 - pixel.r.toInt();
+        inverted.setPixel(x, y, img.ColorRgb8(inv, inv, inv));
+      }
+    }
+
+    final blurred = img.gaussianBlur(
+      inverted,
+      radius: (10 * intensity).round().clamp(3, 20),
+    );
+
+    final result = img.Image(width: image.width, height: image.height);
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final grayPixel = gray.getPixel(x, y);
+        final blurPixel = blurred.getPixel(x, y);
+
+        final g = grayPixel.r.toInt();
+        final b = blurPixel.r.toInt();
+
+        int newValue;
+        if (b == 255) {
+          newValue = 255;
+        } else {
+          newValue = (g * 255 / (255 - b)).round().clamp(0, 255);
+        }
+
+        result.setPixel(x, y, img.ColorRgb8(newValue, newValue, newValue));
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _applyNeonEffect(img.Image image, {double intensity = 1.0}) {
+    final edges = _detectEdges(image);
+
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final edgeValue = edges.getPixel(x, y).r.toInt();
+        final pixel = image.getPixel(x, y);
+
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+
+        final edgeFactor = (edgeValue / 255.0) * intensity;
+
+        final neonR = (r * 0.3 + edgeFactor * 255).round().clamp(0, 255);
+        final neonG = (g * 0.3 + edgeFactor * 200).round().clamp(0, 255);
+        final neonB = (b * 0.3 + edgeFactor * 255).round().clamp(0, 255);
+
+        result.setPixel(x, y, img.ColorRgb8(neonR, neonG, neonB));
+      }
+    }
+
+    return img.adjustColor(
+      result,
+      saturation: 0.5 * intensity,
+      brightness: 0.1,
+    );
+  }
+
+  img.Image _detectEdges(img.Image image) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    final sobelX = [
+      [-1, 0, 1],
+      [-2, 0, 2],
+      [-1, 0, 1],
+    ];
+
+    final sobelY = [
+      [-1, -2, -1],
+      [0, 0, 0],
+      [1, 2, 1],
+    ];
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        double gx = 0, gy = 0;
+
+        for (int ky = -1; ky <= 1; ky++) {
+          for (int kx = -1; kx <= 1; kx++) {
+            final nx = (x + kx).clamp(0, image.width - 1);
+            final ny = (y + ky).clamp(0, image.height - 1);
+
+            final pixel = image.getPixel(nx, ny);
+            final gray = (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b);
+
+            gx += gray * sobelX[ky + 1][kx + 1];
+            gy += gray * sobelY[ky + 1][kx + 1];
+          }
+        }
+
+        final magnitude = sqrt(gx * gx + gy * gy).clamp(0.0, 255.0).round();
+        result.setPixel(x, y, img.ColorRgb8(magnitude, magnitude, magnitude));
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _applyPosterizeEffect(img.Image image, {int levels = 4}) {
+    final result = img.Image(width: image.width, height: image.height);
+    final step = 255 / (levels - 1);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+
+        final r = (pixel.r.toInt() / step).round() * step;
+        final g = (pixel.g.toInt() / step).round() * step;
+        final b = (pixel.b.toInt() / step).round() * step;
+
+        result.setPixel(
+          x,
+          y,
+          img.ColorRgb8(
+            r.round().clamp(0, 255),
+            g.round().clamp(0, 255),
+            b.round().clamp(0, 255),
+          ),
+        );
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _applyEmbossEffect(img.Image image, {double strength = 1.0}) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    final kernel = [
+      [-2, -1, 0],
+      [-1, 1, 1],
+      [0, 1, 2],
+    ];
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        double sumR = 0, sumG = 0, sumB = 0;
+
+        for (int ky = -1; ky <= 1; ky++) {
+          for (int kx = -1; kx <= 1; kx++) {
+            final nx = (x + kx).clamp(0, image.width - 1);
+            final ny = (y + ky).clamp(0, image.height - 1);
+
+            final pixel = image.getPixel(nx, ny);
+            final weight = kernel[ky + 1][kx + 1] * strength;
+
+            sumR += pixel.r.toInt() * weight;
+            sumG += pixel.g.toInt() * weight;
+            sumB += pixel.b.toInt() * weight;
+          }
+        }
+
+        final r = (sumR + 128).round().clamp(0, 255);
+        final g = (sumG + 128).round().clamp(0, 255);
+        final b = (sumB + 128).round().clamp(0, 255);
+
+        result.setPixel(x, y, img.ColorRgb8(r, g, b));
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _applyVintageEffect(img.Image image, {double intensity = 1.0}) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+
+        final vintageR = (r * 0.393 + g * 0.769 + b * 0.189).round().clamp(
+          0,
+          255,
+        );
+        final vintageG = (r * 0.349 + g * 0.686 + b * 0.168).round().clamp(
+          0,
+          255,
+        );
+        final vintageB = (r * 0.272 + g * 0.534 + b * 0.131).round().clamp(
+          0,
+          255,
+        );
+
+        final finalR = (r * (1 - intensity) + vintageR * intensity)
+            .round()
+            .clamp(0, 255);
+        final finalG = (g * (1 - intensity) + vintageG * intensity)
+            .round()
+            .clamp(0, 255);
+        final finalB = (b * (1 - intensity) + vintageB * intensity)
+            .round()
+            .clamp(0, 255);
+
+        result.setPixel(x, y, img.ColorRgb8(finalR, finalG, finalB));
+      }
+    }
+
+    final noise = img.Image(width: image.width, height: image.height);
+    final random = Random(42);
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = result.getPixel(x, y);
+        final noiseValue = (random.nextDouble() - 0.5) * 30 * intensity;
+
+        final r = (pixel.r.toInt() + noiseValue).round().clamp(0, 255);
+        final g = (pixel.g.toInt() + noiseValue).round().clamp(0, 255);
+        final b = (pixel.b.toInt() + noiseValue).round().clamp(0, 255);
+
+        noise.setPixel(x, y, img.ColorRgb8(r, g, b));
+      }
+    }
+
+    return noise;
+  }
+
+  img.Image _applyPixelateEffect(img.Image image, {int blockSize = 8}) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int by = 0; by < image.height; by += blockSize) {
+      for (int bx = 0; bx < image.width; bx += blockSize) {
+        final pixel = image.getPixel(
+          (bx + blockSize / 2).round().clamp(0, image.width - 1),
+          (by + blockSize / 2).round().clamp(0, image.height - 1),
+        );
+
+        final r = pixel.r.toInt();
+        final g = pixel.g.toInt();
+        final b = pixel.b.toInt();
+
+        for (int y = by; y < by + blockSize && y < image.height; y++) {
+          for (int x = bx; x < bx + blockSize && x < image.width; x++) {
+            result.setPixel(x, y, img.ColorRgb8(r, g, b));
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  img.Image _applyWatercolorEffect(img.Image image, {double intensity = 1.0}) {
+    var result = img.gaussianBlur(image, radius: 2);
+
+    result = _applyMedianFilter(
+      result,
+      radius: (3 * intensity).round().clamp(1, 5),
+    );
+
+    result = img.adjustColor(
+      result,
+      saturation: 0.2 * intensity,
+      contrast: 0.1,
+    );
+
+    return result;
+  }
+
+  img.Image _applyMedianFilter(img.Image image, {int radius = 3}) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final redValues = <int>[];
+        final greenValues = <int>[];
+        final blueValues = <int>[];
+
+        for (int ky = -radius; ky <= radius; ky++) {
+          for (int kx = -radius; kx <= radius; kx++) {
+            final nx = (x + kx).clamp(0, image.width - 1);
+            final ny = (y + ky).clamp(0, image.height - 1);
+
+            final pixel = image.getPixel(nx, ny);
+            redValues.add(pixel.r.toInt());
+            greenValues.add(pixel.g.toInt());
+            blueValues.add(pixel.b.toInt());
+          }
+        }
+
+        redValues.sort();
+        greenValues.sort();
+        blueValues.sort();
+
+        final mid = redValues.length ~/ 2;
+        result.setPixel(
+          x,
+          y,
+          img.ColorRgb8(redValues[mid], greenValues[mid], blueValues[mid]),
         );
       }
     }

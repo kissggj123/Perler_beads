@@ -5,7 +5,13 @@ import 'package:image/image.dart' as img;
 import 'package:file_picker/file_picker.dart';
 import '../models/bead_design.dart';
 import '../models/color_palette.dart';
-import '../services/image_processing_service.dart';
+import '../services/image_processing_service.dart'
+    show
+        DitheringMode,
+        AlgorithmStyle,
+        ExperimentalEffect,
+        ImageProcessingService,
+        ColorAnalysisResult;
 
 enum ProcessingState { idle, loading, processing, completed, error }
 
@@ -40,6 +46,8 @@ class ImageProcessingProvider extends ChangeNotifier {
   double _saturation = 0.0;
   DitheringMode _ditheringMode = DitheringMode.none;
   AlgorithmStyle _algorithmStyle = AlgorithmStyle.realistic;
+  ExperimentalEffect _experimentalEffect = ExperimentalEffect.none;
+  double _effectIntensity = 1.0;
 
   File? get selectedFile => _selectedFile;
   img.Image? get originalImage => _originalImage;
@@ -68,6 +76,8 @@ class ImageProcessingProvider extends ChangeNotifier {
   double get saturation => _saturation;
   DitheringMode get ditheringMode => _ditheringMode;
   AlgorithmStyle get algorithmStyle => _algorithmStyle;
+  ExperimentalEffect get experimentalEffect => _experimentalEffect;
+  double get effectIntensity => _effectIntensity;
 
   bool get hasImage => _originalImage != null;
   bool get isProcessing =>
@@ -151,6 +161,14 @@ class ImageProcessingProvider extends ChangeNotifier {
         _algorithmStyle,
       );
 
+      if (_experimentalEffect != ExperimentalEffect.none) {
+        processedImage = _service.applyExperimentalEffect(
+          processedImage,
+          _experimentalEffect,
+          intensity: _effectIntensity,
+        );
+      }
+
       _previewImage = _service.pixelateImage(
         processedImage,
         _outputWidth,
@@ -188,6 +206,14 @@ class ImageProcessingProvider extends ChangeNotifier {
         processedImage,
         _algorithmStyle,
       );
+
+      if (_experimentalEffect != ExperimentalEffect.none) {
+        processedImage = _service.applyExperimentalEffect(
+          processedImage,
+          _experimentalEffect,
+          intensity: _effectIntensity,
+        );
+      }
 
       final pixelatedImage = _service.pixelateImage(
         processedImage,
@@ -265,22 +291,40 @@ class ImageProcessingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setBrightness(double value) {
+  void setBrightness(double value, {bool generatePreview = true}) {
     _brightness = value.clamp(-1.0, 1.0);
-    _generatePreview();
+    if (generatePreview) {
+      _generatePreview();
+    }
     notifyListeners();
   }
 
-  void setContrast(double value) {
+  void setContrast(double value, {bool generatePreview = true}) {
     _contrast = value.clamp(-1.0, 1.0);
-    _generatePreview();
+    if (generatePreview) {
+      _generatePreview();
+    }
     notifyListeners();
   }
 
-  void setSaturation(double value) {
+  void setSaturation(double value, {bool generatePreview = true}) {
     _saturation = value.clamp(-1.0, 1.0);
-    _generatePreview();
+    if (generatePreview) {
+      _generatePreview();
+    }
     notifyListeners();
+  }
+
+  void setEffectIntensity(double intensity, {bool generatePreview = true}) {
+    _effectIntensity = intensity.clamp(0.1, 2.0);
+    if (generatePreview) {
+      _generatePreview();
+    }
+    notifyListeners();
+  }
+
+  Future<void> applyPreview() async {
+    await _generatePreview();
   }
 
   void setDitheringMode(DitheringMode mode) {
@@ -294,12 +338,20 @@ class ImageProcessingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setExperimentalEffect(ExperimentalEffect effect) {
+    _experimentalEffect = effect;
+    _generatePreview();
+    notifyListeners();
+  }
+
   void resetAdjustments() {
     _brightness = 0.0;
     _contrast = 0.0;
     _saturation = 0.0;
     _ditheringMode = DitheringMode.none;
     _algorithmStyle = AlgorithmStyle.realistic;
+    _experimentalEffect = ExperimentalEffect.none;
+    _effectIntensity = 1.0;
     _generatePreview();
     notifyListeners();
   }
@@ -352,6 +404,8 @@ class ImageProcessingProvider extends ChangeNotifier {
     _saturation = 0.0;
     _ditheringMode = DitheringMode.none;
     _algorithmStyle = AlgorithmStyle.realistic;
+    _experimentalEffect = ExperimentalEffect.none;
+    _effectIntensity = 1.0;
     notifyListeners();
   }
 

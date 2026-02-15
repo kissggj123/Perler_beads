@@ -8,6 +8,7 @@ import '../providers/inventory_provider.dart';
 import '../services/design_storage_service.dart';
 import '../utils/animations.dart';
 import '../widgets/design_list_tile.dart';
+import '../widgets/export_dialog.dart';
 import 'design_editor_screen.dart';
 import 'image_import_screen.dart';
 
@@ -58,6 +59,58 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context) => DesignEditorScreen(initialDesign: design),
       ),
     );
+  }
+
+  void _exportDesign(BeadDesign design) {
+    ExportDialog.show(
+      context,
+      design: design,
+      onExportComplete: () {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('导出成功'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  Future<void> _renameDesign(BeadDesign design) async {
+    final controller = TextEditingController(text: design.name);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重命名设计'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '设计名称',
+            hintText: '输入新的设计名称',
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.trim().isNotEmpty && mounted) {
+      final updatedDesign = design.copyWith(name: result.trim());
+      await _designStorageService.saveDesign(updatedDesign);
+      await _loadData();
+    }
   }
 
   Future<void> _createNewDesign() async {
@@ -311,7 +364,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   await _designStorageService.deleteDesign(design.id);
                   await _loadData();
                 },
-                onExport: () {},
+                onExport: () => _exportDesign(design),
+                onRename: () => _renameDesign(design),
               );
             },
           ),

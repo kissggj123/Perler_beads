@@ -19,19 +19,20 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with SingleTickerProviderStateMixin {
   static const String appName = '兔可可的拼豆世界';
-  static const String appVersion = '1.1.2';
+  static const String appVersion = '1.1.5';
   static const String developer = 'BunnyCC';
   static const String copyright =
       'Copyright © 2026 BunnyCC. All rights reserved.';
 
-  late bool _exportShowGrid;
-  late bool _exportPdfIncludeStats;
-  late int _defaultCanvasWidth;
-  late int _defaultCanvasHeight;
-  late int _lowStockThreshold;
-  late String _defaultExportFormat;
+  bool _exportShowGrid = false;
+  bool _exportPdfIncludeStats = true;
+  int _defaultCanvasWidth = 29;
+  int _defaultCanvasHeight = 29;
+  int _lowStockThreshold = 50;
+  String _defaultExportFormat = 'png';
 
   final PerformanceService _performanceService = PerformanceService();
   bool _showPerformanceMonitor = false;
@@ -41,17 +42,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const int _godModeTapThreshold = 7;
   static const Duration _tapTimeout = Duration(seconds: 2);
 
+  late AnimationController _versionTapAnimationController;
+  late Animation<double> _versionTapScaleAnimation;
+  late Animation<double> _versionTapGlowAnimation;
+
   @override
   void initState() {
     super.initState();
-    final settingsService = SettingsService();
-    _exportShowGrid = settingsService.getExportShowGrid();
-    _exportPdfIncludeStats = settingsService.getExportPdfIncludeStats();
-    _defaultCanvasWidth = settingsService.getDefaultCanvasWidth();
-    _defaultCanvasHeight = settingsService.getDefaultCanvasHeight();
-    _lowStockThreshold = settingsService.getLowStockThreshold();
-    _defaultExportFormat = settingsService.getDefaultExportFormat();
-    _performanceService.initialize();
+    _loadSettings();
+
+    _versionTapAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+
+    _versionTapScaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
+      CurvedAnimation(
+        parent: _versionTapAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
+    _versionTapGlowAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _versionTapAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final settingsService = SettingsService();
+      await settingsService.initialize();
+
+      if (mounted) {
+        setState(() {
+          _exportShowGrid = settingsService.getExportShowGrid();
+          _exportPdfIncludeStats = settingsService.getExportPdfIncludeStats();
+          _defaultCanvasWidth = settingsService.getDefaultCanvasWidth();
+          _defaultCanvasHeight = settingsService.getDefaultCanvasHeight();
+          _lowStockThreshold = settingsService.getLowStockThreshold();
+          _defaultExportFormat = settingsService.getDefaultExportFormat();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading settings: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _versionTapAnimationController.dispose();
+    super.dispose();
   }
 
   @override
@@ -225,91 +268,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildPerformanceSection(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return _SettingsCard(
-      title: '性能设置',
-      icon: Icons.speed,
-      children: [
-        ListTile(
-          leading: Icon(Icons.memory, color: colorScheme.primary),
-          title: const Text('GPU 加速'),
-          subtitle: Text(
-            _performanceService.config.enableGpuAcceleration
-                ? '已启用 - ${PerformanceService.getPlatformDefaultBackend()}'
-                : '已禁用',
-          ),
-          trailing: Switch(
-            value: _performanceService.config.enableGpuAcceleration,
-            onChanged: (value) async {
-              await _performanceService.setEnableGpuAcceleration(value);
-              setState(() {});
-            },
-          ),
-        ),
-        ListTile(
-          leading: Icon(Icons.tune, color: colorScheme.secondary),
-          title: const Text('性能等级'),
-          subtitle: Text(
-            _getPerformanceLevelLabel(
-              _performanceService.config.performanceLevel,
-            ),
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showPerformanceLevelDialog(context),
-        ),
-        ListTile(
-          leading: Icon(Icons.monitor_heart, color: colorScheme.tertiary),
-          title: const Text('性能监控'),
-          subtitle: const Text('显示实时帧率和 GPU 使用率'),
-          trailing: Switch(
-            value: _showPerformanceMonitor,
-            onChanged: (value) {
-              setState(() {
-                _showPerformanceMonitor = value;
-              });
-              if (value) {
-                _performanceService.startMonitoring();
-              } else {
-                _performanceService.stopMonitoring();
-              }
-            },
-          ),
-        ),
-        if (_showPerformanceMonitor) ...[
-          const Divider(),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: PerformanceStatsPanel(
-              metrics: _performanceService.getCurrentMetrics(),
-            ),
-          ),
-        ],
-        const Divider(),
-        ListTile(
-          leading: Icon(
-            Icons.info_outline,
-            color: colorScheme.onSurfaceVariant,
-          ),
-          title: const Text('渲染引擎状态'),
-          subtitle: Text(PerformanceService.getImpellerStatus()),
-        ),
-        if (Platform.isMacOS || Platform.isWindows) ...[
-          ListTile(
-            leading: Icon(Icons.computer, color: colorScheme.primary),
-            title: Text(Platform.isMacOS ? 'Metal 后端' : 'DirectX/Vulkan 后端'),
-            subtitle: Text(
-              Platform.isMacOS
-                  ? 'Apple Silicon 和 Intel Mac 均支持 Metal 加速'
-                  : '支持 NVIDIA/AMD/Intel 显卡硬件加速',
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
   String _getPerformanceLevelLabel(PerformanceLevel level) {
     return switch (level) {
       PerformanceLevel.low => '低功耗 (30 FPS)',
@@ -334,11 +292,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               groupValue: _performanceService.config.performanceLevel,
               onChanged: (value) async {
                 if (value != null) {
-                  await _performanceService.setPerformanceLevel(value);
-                  if (dialogContext.mounted) {
-                    Navigator.pop(dialogContext);
+                  try {
+                    await _performanceService.setPerformanceLevel(value);
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  } catch (e) {
+                    debugPrint('Error setting performance level: $e');
                   }
-                  setState(() {});
                 }
               },
             );
@@ -512,12 +476,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           title: const Text('应用名称'),
           subtitle: const Text(appName),
         ),
-        ListTile(
-          leading: Icon(Icons.verified, color: colorScheme.secondary),
-          title: const Text('版本'),
-          subtitle: Text(appVersion),
-          onTap: () => _handleVersionTap(context),
-        ),
+        _buildAnimatedVersionTile(context),
         ListTile(
           leading: Icon(Icons.history, color: colorScheme.tertiary),
           title: const Text('更新日志'),
@@ -568,9 +527,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildAnimatedVersionTile(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return AnimatedBuilder(
+      animation: _versionTapAnimationController,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _versionTapScaleAnimation.value,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: _versionTapGlowAnimation.value > 0
+                  ? [
+                      BoxShadow(
+                        color: colorScheme.primary.withValues(
+                          alpha: _versionTapGlowAnimation.value * 0.3,
+                        ),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: ListTile(
+              leading: Icon(Icons.verified, color: colorScheme.secondary),
+              title: const Text('版本'),
+              subtitle: Text(appVersion),
+              onTap: () => _handleVersionTap(context),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _handleVersionTap(BuildContext context) {
     final appProvider = context.read<AppProvider>();
     final now = DateTime.now();
+
+    HapticFeedback.lightImpact();
+
+    _versionTapAnimationController.forward().then((_) {
+      _versionTapAnimationController.reverse();
+    });
 
     if (_lastVersionTapTime == null ||
         now.difference(_lastVersionTapTime!) > _tapTimeout) {
@@ -586,20 +586,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final newGodModeState = !appProvider.godModeEnabled;
       appProvider.setGodModeEnabled(newGodModeState);
 
+      HapticFeedback.heavyImpact();
+
+      ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(newGodModeState ? '上帝模式已启用！' : '上帝模式已关闭'),
           backgroundColor: newGodModeState ? Colors.purple : Colors.grey[700],
           duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } else if (!appProvider.godModeEnabled && _versionTapCount > 3) {
+      ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             '再点击 ${_godModeTapThreshold - _versionTapCount} 次启用上帝模式',
           ),
-          duration: const Duration(milliseconds: 500),
+          duration: const Duration(milliseconds: 800),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
@@ -753,10 +759,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               setState(() {
                 _showPerformanceMonitor = value;
               });
-              if (value) {
-                _performanceService.startMonitoring();
-              } else {
-                _performanceService.stopMonitoring();
+              try {
+                if (value) {
+                  _performanceService.startMonitoring();
+                } else {
+                  _performanceService.stopMonitoring();
+                }
+              } catch (e) {
+                debugPrint('Error toggling performance monitoring: $e');
               }
             },
           ),
@@ -834,6 +844,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 divisions: 9,
                 label: '${(appProvider.slowAnimationSpeed * 100).toInt()}%',
                 onChanged: (value) {
+                  appProvider.setSlowAnimationSpeedImmediate(value);
+                },
+                onChangeEnd: (value) {
                   appProvider.setSlowAnimationSpeed(value);
                 },
               ),
@@ -936,123 +949,150 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _exportDebugInfo(BuildContext context) async {
-    final appProvider = context.read<AppProvider>();
-    final settingsService = SettingsService();
-    final storageService = StorageService();
+    try {
+      final appProvider = context.read<AppProvider>();
+      final settingsService = SettingsService();
+      await settingsService.initialize();
+      final storageService = StorageService();
+      await storageService.initialize();
 
-    final debugInfo = {
-      'timestamp': DateTime.now().toIso8601String(),
-      'appVersion': appVersion,
-      'platform': Platform.operatingSystem,
-      'godModeSettings': {
-        'godModeEnabled': appProvider.godModeEnabled,
-        'debugModeEnabled': appProvider.debugModeEnabled,
-        'performanceMonitorEnabled': appProvider.performanceMonitorEnabled,
-        'experimentalFeaturesEnabled': appProvider.experimentalFeaturesEnabled,
-        'showFps': appProvider.showFps,
-        'showGridCoordinates': appProvider.showGridCoordinates,
-        'showMemoryInfo': appProvider.showMemoryInfo,
-        'showCacheStats': appProvider.showCacheStats,
-        'showTouchPoints': appProvider.showTouchPoints,
-        'showLayoutBounds': appProvider.showLayoutBounds,
-        'showRepaintRainbow': appProvider.showRepaintRainbow,
-        'enableSlowAnimations': appProvider.enableSlowAnimations,
-        'slowAnimationSpeed': appProvider.slowAnimationSpeed,
-        'hiddenFeaturesEnabled': appProvider.hiddenFeaturesEnabled,
-        'easterEggDiscovered': appProvider.easterEggDiscovered,
-        'debugOverlayEnabled': appProvider.debugOverlayEnabled,
-      },
-      'appSettings': {
-        'themeMode': appProvider.themeMode.name,
-        'animationsEnabled': appProvider.animationsEnabled,
-        'pageTransitionsEnabled': appProvider.pageTransitionsEnabled,
-        'listAnimationsEnabled': appProvider.listAnimationsEnabled,
-        'buttonAnimationsEnabled': appProvider.buttonAnimationsEnabled,
-        'cardAnimationsEnabled': appProvider.cardAnimationsEnabled,
-      },
-      'performanceSettings': {
-        'gpuAcceleration': _performanceService.config.enableGpuAcceleration,
-        'performanceLevel': _performanceService.config.performanceLevel.name,
-        'renderEngine': PerformanceService.getImpellerStatus(),
-      },
-      'storageInfo': {
-        'dataPath': storageService.dataDirectoryPath,
-        'settingsInitialized': settingsService.containsKey('theme_mode'),
-      },
-    };
+      final debugInfo = {
+        'timestamp': DateTime.now().toIso8601String(),
+        'appVersion': appVersion,
+        'platform': Platform.operatingSystem,
+        'godModeSettings': {
+          'godModeEnabled': appProvider.godModeEnabled,
+          'debugModeEnabled': appProvider.debugModeEnabled,
+          'performanceMonitorEnabled': appProvider.performanceMonitorEnabled,
+          'experimentalFeaturesEnabled':
+              appProvider.experimentalFeaturesEnabled,
+          'showFps': appProvider.showFps,
+          'showGridCoordinates': appProvider.showGridCoordinates,
+          'showMemoryInfo': appProvider.showMemoryInfo,
+          'showCacheStats': appProvider.showCacheStats,
+          'showTouchPoints': appProvider.showTouchPoints,
+          'showLayoutBounds': appProvider.showLayoutBounds,
+          'showRepaintRainbow': appProvider.showRepaintRainbow,
+          'enableSlowAnimations': appProvider.enableSlowAnimations,
+          'slowAnimationSpeed': appProvider.slowAnimationSpeed,
+          'hiddenFeaturesEnabled': appProvider.hiddenFeaturesEnabled,
+          'easterEggDiscovered': appProvider.easterEggDiscovered,
+          'debugOverlayEnabled': appProvider.debugOverlayEnabled,
+        },
+        'appSettings': {
+          'themeMode': appProvider.themeMode.name,
+          'animationsEnabled': appProvider.animationsEnabled,
+          'pageTransitionsEnabled': appProvider.pageTransitionsEnabled,
+          'listAnimationsEnabled': appProvider.listAnimationsEnabled,
+          'buttonAnimationsEnabled': appProvider.buttonAnimationsEnabled,
+          'cardAnimationsEnabled': appProvider.cardAnimationsEnabled,
+        },
+        'performanceSettings': {
+          'gpuAcceleration': _performanceService.config.enableGpuAcceleration,
+          'performanceLevel': _performanceService.config.performanceLevel.name,
+          'renderEngine': PerformanceService.getImpellerStatus(),
+        },
+        'storageInfo': {
+          'dataPath': storageService.dataDirectoryPath,
+          'settingsInitialized': settingsService.containsKey('theme_mode'),
+        },
+      };
 
-    final jsonString = const JsonEncoder.withIndent('  ').convert(debugInfo);
+      final jsonString = const JsonEncoder.withIndent('  ').convert(debugInfo);
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('调试信息'),
-        content: SizedBox(
-          width: 400,
-          height: 400,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              jsonString,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('调试信息'),
+          content: SizedBox(
+            width: 400,
+            height: 400,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                jsonString,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: jsonString));
+                ScaffoldMessenger.of(
+                  dialogContext,
+                ).showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
+              },
+              child: const Text('复制'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('关闭'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: jsonString));
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
-            },
-            child: const Text('复制'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('Error exporting debug info: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导出调试信息失败: $e')));
+      }
+    }
   }
 
   void _showResetGodModeDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('重置上帝模式设置'),
         content: const Text('确定要重置所有上帝模式选项为默认值吗？此操作不可撤销。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
             ),
             onPressed: () async {
-              final appProvider = this.context.read<AppProvider>();
-              await appProvider.setDebugModeEnabled(false);
-              await appProvider.setPerformanceMonitorEnabled(false);
-              await appProvider.setExperimentalFeaturesEnabled(false);
-              await appProvider.setShowFps(false);
-              await appProvider.setShowGridCoordinates(false);
-              await appProvider.setShowMemoryInfo(false);
-              await appProvider.setShowCacheStats(false);
-              await appProvider.setShowTouchPoints(false);
-              await appProvider.setShowLayoutBounds(false);
-              await appProvider.setShowRepaintRainbow(false);
-              await appProvider.setEnableSlowAnimations(false);
-              await appProvider.setSlowAnimationSpeed(0.5);
-              await appProvider.setHiddenFeaturesEnabled(false);
-              await appProvider.setDebugOverlayEnabled(false);
+              try {
+                final appProvider = this.context.read<AppProvider>();
+                await appProvider.setDebugModeEnabled(false);
+                await appProvider.setPerformanceMonitorEnabled(false);
+                await appProvider.setExperimentalFeaturesEnabled(false);
+                await appProvider.setShowFps(false);
+                await appProvider.setShowGridCoordinates(false);
+                await appProvider.setShowMemoryInfo(false);
+                await appProvider.setShowCacheStats(false);
+                await appProvider.setShowTouchPoints(false);
+                await appProvider.setShowLayoutBounds(false);
+                await appProvider.setShowRepaintRainbow(false);
+                await appProvider.setEnableSlowAnimations(false);
+                await appProvider.setSlowAnimationSpeed(0.5);
+                await appProvider.setHiddenFeaturesEnabled(false);
+                await appProvider.setDebugOverlayEnabled(false);
 
-              Navigator.pop(context);
-              if (mounted) {
-                ScaffoldMessenger.of(
-                  this.context,
-                ).showSnackBar(const SnackBar(content: Text('上帝模式设置已重置')));
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+                if (mounted) {
+                  setState(() {
+                    _showPerformanceMonitor = false;
+                  });
+                  ScaffoldMessenger.of(
+                    this.context,
+                  ).showSnackBar(const SnackBar(content: Text('上帝模式设置已重置')));
+                }
+              } catch (e) {
+                debugPrint('Error resetting god mode settings: $e');
+                if (mounted) {
+                  ScaffoldMessenger.of(
+                    this.context,
+                  ).showSnackBar(SnackBar(content: Text('重置失败: $e')));
+                }
               }
             },
             child: const Text('重置'),
@@ -1065,7 +1105,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showGodModePerformanceSettings(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('性能设置'),
         content: SingleChildScrollView(
           child: Column(
@@ -1082,10 +1122,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: Switch(
                   value: _performanceService.config.enableGpuAcceleration,
                   onChanged: (value) async {
-                    await _performanceService.setEnableGpuAcceleration(value);
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      _showGodModePerformanceSettings(this.context);
+                    try {
+                      await _performanceService.setEnableGpuAcceleration(value);
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                        _showGodModePerformanceSettings(this.context);
+                      }
+                    } catch (e) {
+                      debugPrint('Error setting GPU acceleration: $e');
                     }
                   },
                 ),
@@ -1101,7 +1145,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                   _showPerformanceLevelDialog(this.context);
                 },
               ),
@@ -1115,7 +1159,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('关闭'),
           ),
         ],
@@ -1129,7 +1173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('开发者选项'),
         content: SingleChildScrollView(
           child: Column(
@@ -1139,7 +1183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 '上帝模式状态',
                 style: Theme.of(
-                  context,
+                  dialogContext,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1167,7 +1211,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 '显示选项',
                 style: Theme.of(
-                  context,
+                  dialogContext,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1203,7 +1247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 '动画设置',
                 style: Theme.of(
-                  context,
+                  dialogContext,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1224,7 +1268,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 '应用设置',
                 style: Theme.of(
-                  context,
+                  dialogContext,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1241,7 +1285,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 '存储信息',
                 style: Theme.of(
-                  context,
+                  dialogContext,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1253,7 +1297,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 '性能信息',
                 style: Theme.of(
-                  context,
+                  dialogContext,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1275,7 +1319,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text(
                 '实验性功能',
                 style: Theme.of(
-                  context,
+                  dialogContext,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -1288,7 +1332,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('关闭'),
           ),
         ],
@@ -1344,7 +1388,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('默认画布尺寸'),
         content: Row(
           children: [
@@ -1375,22 +1419,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () async {
-              final width = int.tryParse(widthController.text) ?? 29;
-              final height = int.tryParse(heightController.text) ?? 29;
-              final settingsService = SettingsService();
-              await settingsService.setDefaultCanvasWidth(width);
-              await settingsService.setDefaultCanvasHeight(height);
-              if (context.mounted) {
-                Navigator.pop(context);
-                setState(() {
-                  _defaultCanvasWidth = width;
-                  _defaultCanvasHeight = height;
-                });
+              try {
+                final width = int.tryParse(widthController.text) ?? 29;
+                final height = int.tryParse(heightController.text) ?? 29;
+                final settingsService = SettingsService();
+                await settingsService.setDefaultCanvasWidth(width);
+                await settingsService.setDefaultCanvasHeight(height);
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+                if (mounted) {
+                  setState(() {
+                    _defaultCanvasWidth = width;
+                    _defaultCanvasHeight = height;
+                  });
+                }
+              } catch (e) {
+                debugPrint('Error saving canvas size: $e');
               }
             },
             child: const Text('保存'),
@@ -1407,7 +1457,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('低库存阈值'),
         content: TextField(
           controller: controller,
@@ -1421,19 +1471,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () async {
-              final threshold = int.tryParse(controller.text) ?? 50;
-              final settingsService = SettingsService();
-              await settingsService.setLowStockThreshold(threshold);
-              if (context.mounted) {
-                Navigator.pop(context);
-                setState(() {
-                  _lowStockThreshold = threshold;
-                });
+              try {
+                final threshold = int.tryParse(controller.text) ?? 50;
+                final settingsService = SettingsService();
+                await settingsService.setLowStockThreshold(threshold);
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+                if (mounted) {
+                  setState(() {
+                    _lowStockThreshold = threshold;
+                  });
+                }
+              } catch (e) {
+                debugPrint('Error saving low stock threshold: $e');
               }
             },
             child: const Text('保存'),
@@ -1446,19 +1502,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showExportFormatDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('默认导出格式'),
         content: RadioGroup<String>(
           groupValue: _defaultExportFormat,
           onChanged: (value) async {
             if (value != null) {
-              final settingsService = SettingsService();
-              await settingsService.setDefaultExportFormat(value);
-              if (context.mounted) {
-                Navigator.pop(context);
-                setState(() {
-                  _defaultExportFormat = value;
-                });
+              try {
+                final settingsService = SettingsService();
+                await settingsService.setDefaultExportFormat(value);
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+                if (mounted) {
+                  setState(() {
+                    _defaultExportFormat = value;
+                  });
+                }
+              } catch (e) {
+                debugPrint('Error saving export format: $e');
               }
             }
           },
@@ -1480,7 +1542,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
         ],
@@ -1489,13 +1551,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showChangelog(BuildContext context) async {
-    showDialog(context: context, builder: (context) => const ChangelogDialog());
+    showDialog(
+      context: context,
+      builder: (dialogContext) => const ChangelogDialog(),
+    );
   }
 
   void _showAboutDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AboutAppDialog(
+      builder: (dialogContext) => AboutAppDialog(
         appName: appName,
         version: appVersion,
         developer: developer,
@@ -1507,31 +1572,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _exportAllData(BuildContext context) async {
     bool? confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('导出所有数据'),
         content: const Text('将导出所有设计和库存数据到 JSON 文件。\n\n您可以选择保存位置。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('导出'),
           ),
         ],
       ),
     );
 
-    if (confirm != true || !context.mounted) return;
+    if (confirm != true || !mounted) return;
 
     String statusText = '准备导出...';
     double progress = 0.0;
 
     showDialog(
-      context: context,
+      context: this.context,
       barrierDismissible: false,
-      builder: (context) => PopScope(
+      builder: (dialogContext) => PopScope(
         canPop: false,
         child: AlertDialog(
           title: const Text('导出数据'),
@@ -1547,44 +1612,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
 
-    final exportService = DataExportService();
-    final success = await exportService.exportAllDataToFile(
-      onProgress: (current, total, status) {
-        statusText = status;
-        progress = current.toDouble();
-      },
-    );
+    try {
+      final exportService = DataExportService();
+      final success = await exportService.exportAllDataToFile(
+        onProgress: (current, total, status) {
+          statusText = status;
+          progress = current.toDouble();
+        },
+      );
 
-    if (context.mounted) {
-      Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(this.context);
 
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('数据导出成功'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
+        if (success) {
+          ScaffoldMessenger.of(this.context).showSnackBar(
+            const SnackBar(
+              content: Text('数据导出成功'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(
+            this.context,
+          ).showSnackBar(const SnackBar(content: Text('导出已取消或失败')));
+        }
+      }
+    } catch (e) {
+      debugPrint('Error exporting data: $e');
+      if (mounted) {
+        Navigator.pop(this.context);
         ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('导出已取消或失败')));
+          this.context,
+        ).showSnackBar(SnackBar(content: Text('导出失败: $e')));
       }
     }
   }
 
   void _openDataDirectory(BuildContext context) async {
-    final storageService = StorageService();
-    final success = await storageService.openDataDirectory();
-    if (context.mounted) {
-      if (success) {
+    try {
+      final storageService = StorageService();
+      await storageService.initialize();
+      final success = await storageService.openDataDirectory();
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(
+            this.context,
+          ).showSnackBar(const SnackBar(content: Text('已打开数据目录')));
+        } else {
+          ScaffoldMessenger.of(
+            this.context,
+          ).showSnackBar(const SnackBar(content: Text('无法打开数据目录')));
+        }
+      }
+    } catch (e) {
+      debugPrint('Error opening data directory: $e');
+      if (mounted) {
         ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已打开数据目录')));
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('无法打开数据目录')));
+          this.context,
+        ).showSnackBar(SnackBar(content: Text('打开数据目录失败: $e')));
       }
     }
   }
@@ -1592,7 +1677,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _importData(BuildContext context) async {
     bool? confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('导入数据'),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
@@ -1607,26 +1692,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('选择文件'),
           ),
         ],
       ),
     );
 
-    if (confirm != true || !context.mounted) return;
+    if (confirm != true || !mounted) return;
 
     String statusText = '准备导入...';
     double progress = 0.0;
 
     showDialog(
-      context: context,
+      context: this.context,
       barrierDismissible: false,
-      builder: (context) => PopScope(
+      builder: (dialogContext) => PopScope(
         canPop: false,
         child: AlertDialog(
           title: const Text('导入数据'),
@@ -1642,36 +1727,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
 
-    final exportService = DataExportService();
-    final result = await exportService.importDataFromFile(
-      onProgress: (current, total, status) {
-        statusText = status;
-        progress = current.toDouble();
-      },
-    );
+    try {
+      final exportService = DataExportService();
+      final result = await exportService.importDataFromFile(
+        onProgress: (current, total, status) {
+          statusText = status;
+          progress = current.toDouble();
+        },
+      );
 
-    if (context.mounted) {
-      Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(this.context);
 
-      if (result.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.summary),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else if (result.cancelled) {
+        if (result.success) {
+          ScaffoldMessenger.of(this.context).showSnackBar(
+            SnackBar(
+              content: Text(result.summary),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else if (result.cancelled) {
+          ScaffoldMessenger.of(
+            this.context,
+          ).showSnackBar(const SnackBar(content: Text('导入已取消')));
+        } else {
+          ScaffoldMessenger.of(this.context).showSnackBar(
+            SnackBar(
+              content: Text(result.errorMessage ?? '导入失败'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error importing data: $e');
+      if (mounted) {
+        Navigator.pop(this.context);
         ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('导入已取消')));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.errorMessage ?? '导入失败'),
-            backgroundColor: Colors.red,
-          ),
-        );
+          this.context,
+        ).showSnackBar(SnackBar(content: Text('导入失败: $e')));
       }
     }
   }
@@ -1679,19 +1774,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showClearCacheDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('清除缓存'),
         content: const Text('确定要清除所有缓存数据吗？这不会影响您的设计和库存数据。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
               ScaffoldMessenger.of(
-                context,
+                this.context,
               ).showSnackBar(const SnackBar(content: Text('缓存已清除')));
             },
             child: const Text('清除'),
@@ -1704,31 +1799,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showResetAppDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('重置应用'),
         content: const Text('确定要重置应用吗？这将删除所有设计、库存数据和设置，此操作不可撤销。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
             ),
             onPressed: () async {
-              Navigator.pop(context);
+              try {
+                Navigator.pop(dialogContext);
 
-              final settingsService = SettingsService();
-              await settingsService.clearAllSettings();
+                final settingsService = SettingsService();
+                await settingsService.clearAllSettings();
 
-              final designStorageService = DesignStorageService();
-              await designStorageService.clearAllDesigns();
+                final designStorageService = DesignStorageService();
+                await designStorageService.clearAllDesigns();
 
-              if (context.mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('应用已重置')));
+                if (mounted) {
+                  ScaffoldMessenger.of(
+                    this.context,
+                  ).showSnackBar(const SnackBar(content: Text('应用已重置')));
+                }
+              } catch (e) {
+                debugPrint('Error resetting app: $e');
+                if (mounted) {
+                  ScaffoldMessenger.of(
+                    this.context,
+                  ).showSnackBar(SnackBar(content: Text('重置失败: $e')));
+                }
               }
             },
             child: const Text('重置'),

@@ -13,14 +13,102 @@ class ColorPickerPanel extends StatefulWidget {
 
 class _ColorPickerPanelState extends State<ColorPickerPanel> {
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _hexInputController = TextEditingController();
   String? _selectedCategory;
   BeadBrand? _selectedBrand;
   bool _showSearch = false;
+  bool _showHexInput = false;
+  String? _hexValidationError;
+  Color? _hexPreviewColor;
 
   @override
   void dispose() {
     _searchController.dispose();
+    _hexInputController.dispose();
     super.dispose();
+  }
+
+  Color? _parseHexColor(String input) {
+    String hex = input.trim();
+    if (hex.startsWith('#')) {
+      hex = hex.substring(1);
+    }
+    if (hex.length == 3) {
+      hex = hex.split('').map((c) => '$c$c').join();
+    }
+    if (hex.length != 6) return null;
+
+    try {
+      final value = int.parse(hex, radix: 16);
+      return Color(value | 0xFF000000);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  String? _validateHexInput(String input) {
+    if (input.isEmpty) return null;
+
+    String hex = input.trim();
+    if (hex.startsWith('#')) {
+      hex = hex.substring(1);
+    }
+    if (hex.length == 3) {
+      return null;
+    }
+    if (hex.length != 6) {
+      return '颜色代码应为6位十六进制数（如：224294）';
+    }
+
+    try {
+      int.parse(hex, radix: 16);
+      return null;
+    } catch (e) {
+      return '无效的十六进制颜色代码';
+    }
+  }
+
+  void _onHexInputChanged(String value) {
+    final error = _validateHexInput(value);
+    final color = _parseHexColor(value);
+
+    setState(() {
+      _hexValidationError = error;
+      _hexPreviewColor = color;
+    });
+  }
+
+  void _applyHexColor(
+    DesignEditorProvider editorProvider,
+    ColorPaletteProvider paletteProvider,
+  ) {
+    if (_hexPreviewColor == null) return;
+
+    final hex = _hexInputController.text.trim().replaceFirst('#', '');
+    final code = 'HEX_${hex.toUpperCase()}';
+
+    final existingColor = paletteProvider.getColorByCode(code);
+    if (existingColor != null) {
+      editorProvider.setSelectedColor(existingColor);
+    } else {
+      final newColor = BeadColor(
+        code: code,
+        name: '自定义 #${hex.toUpperCase()}',
+        red: (_hexPreviewColor!.r * 255.0).round().clamp(0, 255),
+        green: (_hexPreviewColor!.g * 255.0).round().clamp(0, 255),
+        blue: (_hexPreviewColor!.b * 255.0).round().clamp(0, 255),
+        brand: BeadBrand.generic,
+        category: '自定义',
+      );
+      paletteProvider.addCustomColor(newColor);
+      editorProvider.setSelectedColor(newColor);
+    }
+
+    _hexInputController.clear();
+    setState(() {
+      _hexPreviewColor = null;
+      _hexValidationError = null;
+    });
   }
 
   @override
@@ -42,6 +130,7 @@ class _ColorPickerPanelState extends State<ColorPickerPanel> {
               _buildHeader(context),
               _buildRecentColors(context, editorProvider),
               const Divider(height: 1),
+              _buildHexInput(context, paletteProvider, editorProvider),
               _buildSearchBar(context, paletteProvider),
               _buildFilters(context, paletteProvider),
               const Divider(height: 1),
@@ -80,6 +169,15 @@ class _ColorPickerPanelState extends State<ColorPickerPanel> {
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const Spacer(),
+          IconButton(
+            icon: Icon(Icons.add_circle_outline, size: 20),
+            onPressed: () {
+              setState(() {
+                _showHexInput = !_showHexInput;
+              });
+            },
+            tooltip: _showHexInput ? '隐藏颜色输入' : '输入颜色代码',
+          ),
           IconButton(
             icon: Icon(_showSearch ? Icons.search_off : Icons.search, size: 20),
             onPressed: () {
@@ -180,6 +278,129 @@ class _ColorPickerPanelState extends State<ColorPickerPanel> {
           provider.setSearchQuery(value);
           setState(() {});
         },
+      ),
+    );
+  }
+
+  Widget _buildHexInput(
+    BuildContext context,
+    ColorPaletteProvider paletteProvider,
+    DesignEditorProvider editorProvider,
+  ) {
+    if (!_showHexInput) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _hexInputController,
+                  decoration: InputDecoration(
+                    hintText: '输入颜色代码 (如: #224294)',
+                    prefixIcon: const Icon(Icons.colorize, size: 20),
+                    suffixIcon: _hexInputController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 20),
+                            onPressed: () {
+                              _hexInputController.clear();
+                              _onHexInputChanged('');
+                            },
+                          )
+                        : null,
+                    errorText: _hexValidationError,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    isDense: true,
+                  ),
+                  onChanged: _onHexInputChanged,
+                  onSubmitted: (_) {
+                    if (_hexPreviewColor != null &&
+                        _hexValidationError == null) {
+                      _applyHexColor(editorProvider, paletteProvider);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (_hexPreviewColor != null && _hexValidationError == null)
+                GestureDetector(
+                  onTap: () => _applyHexColor(editorProvider, paletteProvider),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: _hexPreviewColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.check,
+                      color: Colors.white,
+                      shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300, width: 1),
+                  ),
+                  child: Icon(Icons.help_outline, color: Colors.grey.shade500),
+                ),
+            ],
+          ),
+          if (_hexPreviewColor != null && _hexValidationError == null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: _hexPreviewColor,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '预览: #${_hexInputController.text.trim().replaceFirst('#', '').toUpperCase()}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'RGB(${(_hexPreviewColor!.r * 255.0).round()}, ${(_hexPreviewColor!.g * 255.0).round()}, ${(_hexPreviewColor!.b * 255.0).round()})',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

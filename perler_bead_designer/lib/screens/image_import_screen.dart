@@ -5,7 +5,12 @@ import '../providers/color_palette_provider.dart';
 import '../models/bead_design.dart';
 import '../models/color_palette.dart';
 import '../services/image_processing_service.dart'
-    show DitheringMode, AlgorithmStyle, AlgorithmStyleExtension;
+    show
+        DitheringMode,
+        AlgorithmStyle,
+        AlgorithmStyleExtension,
+        ExperimentalEffect,
+        ExperimentalEffectExtension;
 import '../widgets/image_preview_widget.dart';
 import '../widgets/size_settings_widget.dart';
 
@@ -457,7 +462,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                 ),
                 if (provider.brightness != 0 ||
                     provider.contrast != 0 ||
-                    provider.saturation != 0)
+                    provider.saturation != 0 ||
+                    provider.experimentalEffect != ExperimentalEffect.none)
                   TextButton(
                     onPressed: provider.resetAdjustments,
                     child: const Text('重置'),
@@ -465,34 +471,43 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildSlider(
+            _buildOptimizedSlider(
               context,
               label: '亮度',
               value: provider.brightness,
               min: -1.0,
               max: 1.0,
               icon: Icons.brightness_6,
-              onChanged: provider.setBrightness,
+              provider: provider,
+              onValueChanged: (value) =>
+                  provider.setBrightness(value, generatePreview: false),
+              onPreviewGenerate: (value) => provider.setBrightness(value),
             ),
             const SizedBox(height: 12),
-            _buildSlider(
+            _buildOptimizedSlider(
               context,
               label: '对比度',
               value: provider.contrast,
               min: -1.0,
               max: 1.0,
               icon: Icons.contrast,
-              onChanged: provider.setContrast,
+              provider: provider,
+              onValueChanged: (value) =>
+                  provider.setContrast(value, generatePreview: false),
+              onPreviewGenerate: (value) => provider.setContrast(value),
             ),
             const SizedBox(height: 12),
-            _buildSlider(
+            _buildOptimizedSlider(
               context,
               label: '饱和度',
               value: provider.saturation,
               min: -1.0,
               max: 1.0,
               icon: Icons.palette_outlined,
-              onChanged: provider.setSaturation,
+              provider: provider,
+              onValueChanged: (value) =>
+                  provider.setSaturation(value, generatePreview: false),
+              onPreviewGenerate: (value) => provider.setSaturation(value),
             ),
             const SizedBox(height: 16),
             const Divider(),
@@ -581,20 +596,212 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 12),
+            _buildExperimentalEffectsSection(context, provider),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSlider(
+  Widget _buildExperimentalEffectsSection(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.science,
+              size: 20,
+              color: Theme.of(context).colorScheme.tertiary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '实验性效果',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.tertiary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'Beta',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '尝试各种艺术效果，为你的拼豆设计增添创意',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 100,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: ExperimentalEffect.values.length,
+            itemBuilder: (context, index) {
+              final effect = ExperimentalEffect.values[index];
+              final isSelected = provider.experimentalEffect == effect;
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: InkWell(
+                  onTap: () => provider.setExperimentalEffect(effect),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 80,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.tertiaryContainer
+                          : Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.tertiary
+                            : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          effect.icon,
+                          size: 28,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.tertiary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          effect.displayName,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: isSelected
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.onTertiaryContainer
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                fontWeight: isSelected ? FontWeight.bold : null,
+                              ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        if (provider.experimentalEffect != ExperimentalEffect.none) ...[
+          const SizedBox(height: 12),
+          _buildEffectIntensitySlider(context, provider),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    provider.experimentalEffect.description,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildEffectIntensitySlider(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Row(
+      children: [
+        Icon(
+          Icons.tune,
+          size: 20,
+          color: Theme.of(context).colorScheme.tertiary,
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 60,
+          child: Text('强度', style: Theme.of(context).textTheme.bodyMedium),
+        ),
+        Expanded(
+          child: Slider(
+            value: provider.effectIntensity,
+            min: 0.1,
+            max: 2.0,
+            divisions: 19,
+            onChanged: (value) =>
+                provider.setEffectIntensity(value, generatePreview: false),
+            onChangeEnd: (value) => provider.setEffectIntensity(value),
+          ),
+        ),
+        SizedBox(
+          width: 50,
+          child: Text(
+            provider.effectIntensity.toStringAsFixed(1),
+            textAlign: TextAlign.right,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOptimizedSlider(
     BuildContext context, {
     required String label,
     required double value,
     required double min,
     required double max,
     required IconData icon,
-    required ValueChanged<double> onChanged,
+    required ImageProcessingProvider provider,
+    required void Function(double) onValueChanged,
+    required void Function(double) onPreviewGenerate,
   }) {
     return Row(
       children: [
@@ -610,7 +817,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
             min: min,
             max: max,
             divisions: 20,
-            onChanged: onChanged,
+            onChanged: onValueChanged,
+            onChangeEnd: onPreviewGenerate,
           ),
         ),
         SizedBox(

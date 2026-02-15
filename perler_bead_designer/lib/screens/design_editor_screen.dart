@@ -7,6 +7,7 @@ import '../widgets/bead_canvas_widget.dart';
 import '../widgets/color_picker_panel.dart';
 import '../widgets/bead_statistics_panel.dart';
 import '../widgets/tool_bar_widget.dart';
+import '../services/settings_service.dart';
 
 class DesignEditorScreen extends StatelessWidget {
   final BeadDesign? initialDesign;
@@ -50,6 +51,7 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
 
   void _initializeEditor() {
     final editorProvider = context.read<DesignEditorProvider>();
+    editorProvider.loadShortcutSettings(SettingsService());
     if (widget.initialDesign != null) {
       editorProvider.loadDesignDirect(widget.initialDesign!);
     } else {
@@ -61,6 +63,19 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
     if (event is! KeyDownEvent) return;
 
     final key = event.logicalKey;
+    final keyLabel = key.keyLabel.toUpperCase();
+
+    final shortcuts = provider.shortcutSettings;
+    if (keyLabel == shortcuts.moveUp ||
+        keyLabel == shortcuts.moveDown ||
+        keyLabel == shortcuts.moveLeft ||
+        keyLabel == shortcuts.moveRight ||
+        keyLabel == shortcuts.zoomIn ||
+        keyLabel == shortcuts.zoomOut ||
+        keyLabel == shortcuts.resetView) {
+      provider.handleKeyboardMove(keyLabel);
+      return;
+    }
 
     if (HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed) {
@@ -416,6 +431,7 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
     DesignEditorProvider provider,
   ) {
     final selectedColor = provider.selectedColor;
+    final isPreviewMode = provider.isPreviewMode;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -427,64 +443,103 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
       ),
       child: Row(
         children: [
-          Text('当前颜色:', style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(width: 12),
-          if (selectedColor != null) ...[
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: selectedColor.color,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.grey.shade400),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  selectedColor.name,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                ),
-                Text(
-                  '${selectedColor.code} · ${selectedColor.hex}',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ] else
+          if (isPreviewMode) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: Theme.of(context).colorScheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.preview,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.onTertiaryContainer,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '预览模式',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onTertiaryContainer,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '点击拼豆查看颜色信息',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ] else ...[
+            Text('当前颜色:', style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(width: 12),
+            if (selectedColor != null) ...[
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: selectedColor.color,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.grey.shade400),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    selectedColor.name,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    '${selectedColor.code} · ${selectedColor.hex}',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ] else
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '未选择颜色',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                '未选择颜色',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                _getToolModeText(provider.toolMode),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSecondaryContainer,
                 ),
               ),
             ),
-          const SizedBox(width: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.secondaryContainer,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              _getToolModeText(provider.toolMode),
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSecondaryContainer,
-              ),
-            ),
-          ),
+          ],
           const Spacer(),
           _buildHistoryIndicator(context, provider),
         ],
@@ -530,6 +585,7 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
     BuildContext context,
     DesignEditorProvider provider,
   ) {
+    final shortcuts = provider.shortcutSettings;
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -540,7 +596,7 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            '提示: 使用鼠标滚轮或双指缩放来调整视图大小 | 快捷键: D-绘制 E-擦除 F-填充 G-网格 C-坐标 Ctrl+Z-撤销 Ctrl+Y-重做',
+            '快捷键: ${shortcuts.moveUp}${shortcuts.moveDown}${shortcuts.moveLeft}${shortcuts.moveRight}-移动 | ${shortcuts.zoomIn}/${shortcuts.zoomOut}-缩放 | ${shortcuts.resetView}-重置视图 | D-绘制 E-擦除 F-填充 G-网格 C-坐标 | Ctrl+Z-撤销 Ctrl+Y-重做 | 鼠标中键拖动-平移',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -568,43 +624,58 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('设计设置'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: '设计名称',
-                border: OutlineInputBorder(),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: '设计名称',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: widthController,
-                    decoration: const InputDecoration(
-                      labelText: '宽度',
-                      border: OutlineInputBorder(),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: widthController,
+                      decoration: const InputDecoration(
+                        labelText: '宽度',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
                     ),
-                    keyboardType: TextInputType.number,
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: heightController,
-                    decoration: const InputDecoration(
-                      labelText: '高度',
-                      border: OutlineInputBorder(),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: heightController,
+                      decoration: const InputDecoration(
+                        labelText: '高度',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
                     ),
-                    keyboardType: TextInputType.number,
                   ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.keyboard),
+                  label: const Text('自定义快捷键设置'),
+                  onPressed: () =>
+                      _showShortcutSettingsDialog(context, provider),
                 ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -628,6 +699,137 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
               Navigator.of(context).pop();
             },
             child: const Text('应用'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showShortcutSettingsDialog(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
+    final currentSettings = provider.shortcutSettings;
+    final controllers = {
+      'moveUp': TextEditingController(text: currentSettings.moveUp),
+      'moveDown': TextEditingController(text: currentSettings.moveDown),
+      'moveLeft': TextEditingController(text: currentSettings.moveLeft),
+      'moveRight': TextEditingController(text: currentSettings.moveRight),
+      'zoomIn': TextEditingController(text: currentSettings.zoomIn),
+      'zoomOut': TextEditingController(text: currentSettings.zoomOut),
+      'resetView': TextEditingController(text: currentSettings.resetView),
+    };
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('快捷键设置'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('点击输入框后按下新按键即可更改快捷键'),
+              const SizedBox(height: 16),
+              _buildShortcutRow(dialogContext, '上移', controllers['moveUp']!),
+              _buildShortcutRow(dialogContext, '下移', controllers['moveDown']!),
+              _buildShortcutRow(dialogContext, '左移', controllers['moveLeft']!),
+              _buildShortcutRow(dialogContext, '右移', controllers['moveRight']!),
+              _buildShortcutRow(dialogContext, '放大', controllers['zoomIn']!),
+              _buildShortcutRow(dialogContext, '缩小', controllers['zoomOut']!),
+              _buildShortcutRow(
+                dialogContext,
+                '重置视图',
+                controllers['resetView']!,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              for (final controller in controllers.values) {
+                controller.dispose();
+              }
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              final defaults = ShortcutSettings().toJson();
+              controllers['moveUp']!.text = defaults['moveUp']!;
+              controllers['moveDown']!.text = defaults['moveDown']!;
+              controllers['moveLeft']!.text = defaults['moveLeft']!;
+              controllers['moveRight']!.text = defaults['moveRight']!;
+              controllers['zoomIn']!.text = defaults['zoomIn']!;
+              controllers['zoomOut']!.text = defaults['zoomOut']!;
+              controllers['resetView']!.text = defaults['resetView']!;
+            },
+            child: const Text('恢复默认'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final newSettings = ShortcutSettings(
+                moveUp: controllers['moveUp']!.text.toUpperCase(),
+                moveDown: controllers['moveDown']!.text.toUpperCase(),
+                moveLeft: controllers['moveLeft']!.text.toUpperCase(),
+                moveRight: controllers['moveRight']!.text.toUpperCase(),
+                zoomIn: controllers['zoomIn']!.text.toUpperCase(),
+                zoomOut: controllers['zoomOut']!.text.toUpperCase(),
+                resetView: controllers['resetView']!.text.toUpperCase(),
+              );
+              await provider.updateShortcutSettings(newSettings);
+              for (final controller in controllers.values) {
+                controller.dispose();
+              }
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShortcutRow(
+    BuildContext context,
+    String label,
+    TextEditingController controller,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(width: 80, child: Text(label)),
+          const SizedBox(width: 16),
+          Expanded(
+            child: KeyboardListener(
+              focusNode: FocusNode(),
+              onKeyEvent: (event) {
+                if (event is KeyDownEvent) {
+                  final keyLabel = event.logicalKey.keyLabel;
+                  if (keyLabel.isNotEmpty && keyLabel.length <= 2) {
+                    controller.text = keyLabel.toUpperCase();
+                  }
+                }
+              },
+              child: TextField(
+                controller: controller,
+                readOnly: true,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  hintText: '点击后按键',
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
         ],
       ),
