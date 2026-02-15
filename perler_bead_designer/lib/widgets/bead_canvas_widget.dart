@@ -147,6 +147,31 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
             _lastX = null;
             _lastY = null;
           },
+          onPointerSignal: (signal) {
+            if (signal is PointerScrollEvent) {
+              final delta = signal.scrollDelta.dy;
+              if (delta != 0) {
+                final currentScale = _transformController.value
+                    .getMaxScaleOnAxis();
+                final scaleDelta = delta > 0 ? 0.9 : 1.1;
+                final newScale = (currentScale * scaleDelta).clamp(
+                  widget.minScale,
+                  widget.maxScale,
+                );
+
+                final position = signal.localPosition;
+                final transform = _transformController.value;
+
+                final newTransform = Matrix4.identity()
+                  ..translate(position.dx, position.dy)
+                  ..scale(newScale / currentScale)
+                  ..translate(-position.dx, -position.dy)
+                  ..multiply(transform);
+
+                _transformController.value = newTransform;
+              }
+            }
+          },
           child: GestureDetector(
             onPanStart: (details) => _handlePanStart(details, provider),
             onPanUpdate: (details) => _handlePanUpdate(details, provider),
@@ -158,7 +183,7 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
               constrained: false,
               clipBehavior: Clip.hardEdge,
               panEnabled: true,
-              scaleEnabled: true,
+              scaleEnabled: false,
               child: SizedBox(
                 width: canvasWidth,
                 height: canvasHeight,

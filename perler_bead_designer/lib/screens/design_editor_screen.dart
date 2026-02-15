@@ -637,25 +637,25 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
 
     if (!provider.isDirty) return true;
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('未保存的更改'),
         content: const Text('您有未保存的更改，是否保存？'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(context).pop('discard'),
             child: const Text('不保存'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(null),
+            onPressed: () => Navigator.of(context).pop('cancel'),
             child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () async {
               final success = await provider.saveDesign();
               if (context.mounted) {
-                Navigator.of(context).pop(success);
+                Navigator.of(context).pop(success ? 'save' : 'cancel');
               }
             },
             child: const Text('保存'),
@@ -664,6 +664,11 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
       ),
     );
 
-    return result ?? false;
+    if (result == 'discard') {
+      return true;
+    } else if (result == 'save') {
+      return true;
+    }
+    return false;
   }
 }

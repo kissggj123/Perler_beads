@@ -27,6 +27,7 @@ class DesignEditorProvider extends ChangeNotifier {
   bool _showGrid = true;
   bool _showCoordinates = false;
   bool _isDirty = false;
+  bool _hasEverBeenSaved = false;
 
   final List<EditorHistory> _undoStack = [];
   final List<EditorHistory> _redoStack = [];
@@ -42,7 +43,7 @@ class DesignEditorProvider extends ChangeNotifier {
   ToolMode get toolMode => _toolMode;
   bool get showGrid => _showGrid;
   bool get showCoordinates => _showCoordinates;
-  bool get isDirty => _isDirty;
+  bool get isDirty => _isDirty || (!_hasEverBeenSaved && _currentDesign != null);
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
   List<BeadColor> get recentColors => List.unmodifiable(_recentColors);
@@ -68,6 +69,7 @@ class DesignEditorProvider extends ChangeNotifier {
     _undoStack.clear();
     _redoStack.clear();
     _isDirty = false;
+    _hasEverBeenSaved = false;
     notifyListeners();
   }
 
@@ -78,6 +80,7 @@ class DesignEditorProvider extends ChangeNotifier {
       _undoStack.clear();
       _redoStack.clear();
       _isDirty = false;
+      _hasEverBeenSaved = true;
       notifyListeners();
       return true;
     }
@@ -89,6 +92,7 @@ class DesignEditorProvider extends ChangeNotifier {
     _undoStack.clear();
     _redoStack.clear();
     _isDirty = false;
+    _hasEverBeenSaved = true;
     notifyListeners();
     return true;
   }
@@ -99,6 +103,7 @@ class DesignEditorProvider extends ChangeNotifier {
     try {
       await _storageService.saveDesign(_currentDesign!);
       _isDirty = false;
+      _hasEverBeenSaved = true;
       notifyListeners();
       return true;
     } catch (e) {
