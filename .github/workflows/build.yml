@@ -1,4 +1,4 @@
-name: Build Flutter Windows
+name: Build and Release
 
 on:
   push:
@@ -7,21 +7,122 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          cd perler_bead_designer
+          flutter pub get
+
+      - name: Build macOS
+        run: |
+          cd perler_bead_designer
+          flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          cd perler_bead_designer/build/macos/Build/Products/Release
+          hdiutil create -volname "兔可可的拼豆世界" \
+            -srcfolder "兔可可的拼豆世界.app" \
+            -ov -format UDZO \
+            "../../../兔可可的拼豆世界-macos.dmg"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: perler_bead_designer/build/兔可可的拼豆世界-macos.dmg
+          retention-days: 30
+
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: subosito/flutter-action@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.10.7'
           channel: 'stable'
-      
-      - run: flutter pub get
-      
-      - run: flutter build windows --release
-      
-      - uses: actions/upload-artifact@v4
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          cd perler_bead_designer
+          flutter pub get
+
+      - name: Build Windows
+        run: |
+          cd perler_bead_designer
+          flutter build windows --release
+
+      - name: Create ZIP archive
+        run: |
+          cd perler_bead_designer/build/windows/x64/runner/Release
+          Compress-Archive -Path * -DestinationPath ../../../兔可可的拼豆世界-windows.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
         with:
           name: windows-release
-          path: build/windows/x64/runner/Release/
+          path: perler_bead_designer/build/兔可可的拼豆世界-windows.zip
+          retention-days: 30
+
+  create-release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-release
+          path: ./artifacts/
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: ./artifacts/
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: 兔可可的拼豆世界 ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## 🎉 兔可可的拼豆世界 ${{ steps.get_version.outputs.VERSION }}
+            
+            ### 下载
+            - **macOS**: 兔可可的拼豆世界-macos.dmg
+            - **Windows**: 兔可可的拼豆世界-windows.zip
+            
+            ### 系统要求
+            - macOS 10.14 (Mojave) 或更高版本
+            - Windows 10 或更高版本
+            
+            ### 更新内容
+            请查看 [更新日志](https://github.com/${{ github.repository }}/blob/main/README.md#-更新日志)
+          files: |
+            artifacts/兔可可的拼豆世界-macos.dmg
+            artifacts/兔可可的拼豆世界-windows.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
