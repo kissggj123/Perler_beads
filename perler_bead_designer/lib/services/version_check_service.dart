@@ -150,7 +150,7 @@ class VersionCheckService {
   }
 
   Future<VersionCheckResult> checkForUpdate({
-    String currentVersion = '2.1.0',
+    String currentVersion = '2.1.2',
     bool forceCheck = false,
   }) async {
     try {
