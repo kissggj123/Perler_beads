@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'providers/app_provider.dart';
 import 'providers/color_palette_provider.dart';
@@ -9,9 +12,82 @@ import 'screens/main_layout.dart';
 import 'services/performance_service.dart';
 import 'services/settings_service.dart';
 import 'services/storage_service.dart';
+import 'services/version_check_service.dart';
+import 'services/update_service.dart';
+
+const double kMinWindowWidth = 1200.0;
+const double kMinWindowHeight = 800.0;
+const double kDefaultWindowWidth = 1400.0;
+const double kDefaultWindowHeight = 900.0;
+const double kSidebarAutoCollapseWidth = 1300.0;
+const double kSidebarExpandedWidth = 200.0;
+const double kSidebarCollapsedWidth = 72.0;
+
+class AppException implements Exception {
+  final String message;
+  final dynamic originalError;
+  final StackTrace? stackTrace;
+
+  const AppException(this.message, {this.originalError, this.stackTrace});
+
+  @override
+  String toString() => 'AppException: $message';
+}
+
+void _handleUncaughtError(Object error, StackTrace stackTrace) {
+  debugPrint('=== 未捕获的错误 ===');
+  debugPrint('错误类型: ${error.runtimeType}');
+  debugPrint('错误信息: $error');
+  debugPrint('堆栈跟踪: $stackTrace');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('=== Flutter 错误 ===');
+    debugPrint('错误: ${details.exception}');
+    debugPrint('堆栈: ${details.stack}');
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    _handleUncaughtError(error, stack);
+    return true;
+  };
+
+  runZonedGuarded<Future<void>>(
+    () async {
+      try {
+        await _initializeApp();
+      } catch (e, stack) {
+        _handleUncaughtError(e, stack);
+        rethrow;
+      }
+    },
+    (error, stack) {
+      _handleUncaughtError(error, stack);
+    },
+  );
+}
+
+Future<void> _initializeApp() async {
+  await windowManager.ensureInitialized();
+
+  const windowOptions = WindowOptions(
+    minimumSize: Size(kMinWindowWidth, kMinWindowHeight),
+    size: Size(kDefaultWindowWidth, kDefaultWindowHeight),
+    center: true,
+    backgroundColor: Colors.transparent,
+    skipTaskbar: false,
+    titleBarStyle: TitleBarStyle.normal,
+    title: '拼豆设计器',
+  );
+
+  await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.show();
+    await windowManager.focus();
+  });
 
   final settingsService = SettingsService();
   await settingsService.initialize();
@@ -21,6 +97,9 @@ void main() async {
 
   final performanceService = PerformanceService();
   await performanceService.initialize();
+
+  final versionCheckService = VersionCheckService();
+  await versionCheckService.initialize();
 
   runApp(
     PerlerBeadDesignerApp(
@@ -62,8 +141,8 @@ class PerlerBeadDesignerApp extends StatelessWidget {
           return MaterialApp(
             title: '拼豆设计器',
             debugShowCheckedModeBanner: false,
-            theme: _buildLightTheme(),
-            darkTheme: _buildDarkTheme(),
+            theme: _buildLightTheme(appProvider.themeColors),
+            darkTheme: _buildDarkTheme(appProvider.themeColors),
             themeMode: appProvider.themeMode,
             home: const MainLayout(),
           );
@@ -72,14 +151,17 @@ class PerlerBeadDesignerApp extends StatelessWidget {
     );
   }
 
-  ThemeData _buildLightTheme() {
+  ThemeData _buildLightTheme(ThemeColors themeColors) {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: Colors.pink,
+      seedColor: themeColors.primaryColor,
       brightness: Brightness.light,
     );
 
     return ThemeData(
-      colorScheme: colorScheme,
+      colorScheme: colorScheme.copyWith(
+        secondary: themeColors.secondaryColor,
+        tertiary: themeColors.accentColor,
+      ),
       useMaterial3: true,
       appBarTheme: AppBarTheme(
         centerTitle: true,
@@ -141,14 +223,17 @@ class PerlerBeadDesignerApp extends StatelessWidget {
     );
   }
 
-  ThemeData _buildDarkTheme() {
+  ThemeData _buildDarkTheme(ThemeColors themeColors) {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: Colors.pink,
+      seedColor: themeColors.primaryColor,
       brightness: Brightness.dark,
     );
 
     return ThemeData(
-      colorScheme: colorScheme,
+      colorScheme: colorScheme.copyWith(
+        secondary: themeColors.secondaryColor,
+        tertiary: themeColors.accentColor,
+      ),
       useMaterial3: true,
       appBarTheme: AppBarTheme(
         centerTitle: true,

@@ -83,6 +83,62 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   Widget _buildStatisticsRow(BuildContext context, InventoryProvider provider) {
     final colorScheme = Theme.of(context).colorScheme;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrowScreen = screenWidth < 900;
+
+    if (isNarrowScreen) {
+      return Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.inventory_2,
+                  label: '总颜色数',
+                  value: '${provider.colorCount}',
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.grain,
+                  label: '总数量',
+                  value: '${provider.totalQuantity}',
+                  color: colorScheme.secondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.warning_amber,
+                  label: '低库存',
+                  value: '${provider.lowStockItems.length}',
+                  color: provider.hasLowStock
+                      ? colorScheme.error
+                      : colorScheme.tertiary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _StatCard(
+                  icon: Icons.block,
+                  label: '缺货',
+                  value: '${provider.outOfStockItems.length}',
+                  color: provider.hasOutOfStock
+                      ? colorScheme.error
+                      : colorScheme.outline,
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
 
     return Row(
       children: [
@@ -134,6 +190,78 @@ class _InventoryScreenState extends State<InventoryScreen> {
     InventoryProvider provider,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrowScreen = screenWidth < 1000;
+
+    if (isNarrowScreen) {
+      return Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: '搜索颜色名称或代码...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              provider.setSearchQuery('');
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.5,
+                    ),
+                  ),
+                  onChanged: (value) {
+                    provider.setSearchQuery(value);
+                    setState(() {});
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilterChip(
+                label: const Text('低库存'),
+                selected: _showLowStockOnly,
+                onSelected: (selected) {
+                  setState(() => _showLowStockOnly = selected);
+                },
+                selectedColor: colorScheme.errorContainer,
+                checkmarkColor: colorScheme.onErrorContainer,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _buildCategoryFilter(context, provider)),
+              const SizedBox(width: 12),
+              Expanded(child: _buildBrandFilter(context, provider)),
+              const SizedBox(width: 8),
+              IconButton.outlined(
+                onPressed: () => _showImportDialog(context),
+                icon: const Icon(Icons.file_upload),
+                tooltip: '导入',
+              ),
+              IconButton.outlined(
+                onPressed: () => _showExportDialog(context, provider),
+                icon: const Icon(Icons.file_download),
+                tooltip: '导出',
+              ),
+            ],
+          ),
+        ],
+      );
+    }
 
     return Row(
       children: [

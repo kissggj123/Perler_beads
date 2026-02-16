@@ -4,3 +4,8 @@ export 'design_storage_service.dart';
 export 'settings_service.dart';
 export 'plugin_service.dart';
 export 'export_service.dart';
+export 'font_service.dart';
+export 'version_check_service.dart';
+export 'update_service.dart';
+export 'gpu_animation_service.dart';
+export 'assembly_guide_service.dart';

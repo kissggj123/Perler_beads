@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'bead_color.dart';
 
 class BeadDesign {
@@ -20,24 +21,65 @@ class BeadDesign {
   });
 
   factory BeadDesign.fromJson(Map<String, dynamic> json) {
-    final gridData = json['grid'] as List<dynamic>? ?? [];
-    final grid = gridData.map((row) {
-      final rowData = row as List<dynamic>;
-      return rowData.map((cell) {
-        if (cell == null) return null;
-        return BeadColor.fromJson(cell as Map<String, dynamic>);
+    try {
+      final gridData = json['grid'] as List<dynamic>? ?? [];
+      final grid = gridData.map((row) {
+        if (row is! List) return <BeadColor?>[];
+        return row.map((cell) {
+          if (cell == null) return null;
+          if (cell is! Map<String, dynamic>) return null;
+          try {
+            return BeadColor.fromJson(cell);
+          } catch (e) {
+            debugPrint('解析颜色失败: $e');
+            return null;
+          }
+        }).toList();
       }).toList();
-    }).toList();
 
-    return BeadDesign(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      width: json['width'] as int,
-      height: json['height'] as int,
-      grid: grid,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
-    );
+      final width = json['width'] as int? ?? 0;
+      final height = json['height'] as int? ?? 0;
+
+      if (width <= 0 || height <= 0) {
+        debugPrint('无效的设计尺寸: $width x $height');
+      }
+
+      DateTime? createdAt;
+      DateTime? updatedAt;
+
+      try {
+        createdAt = json['createdAt'] != null
+            ? DateTime.parse(json['createdAt'] as String)
+            : DateTime.now();
+      } catch (e) {
+        debugPrint('解析创建时间失败: $e');
+        createdAt = DateTime.now();
+      }
+
+      try {
+        updatedAt = json['updatedAt'] != null
+            ? DateTime.parse(json['updatedAt'] as String)
+            : DateTime.now();
+      } catch (e) {
+        debugPrint('解析更新时间失败: $e');
+        updatedAt = DateTime.now();
+      }
+
+      return BeadDesign(
+        id:
+            json['id'] as String? ??
+            'unknown_${DateTime.now().millisecondsSinceEpoch}',
+        name: json['name'] as String? ?? '未命名设计',
+        width: width,
+        height: height,
+        grid: grid,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+      );
+    } catch (e) {
+      debugPrint('解析设计失败: $e');
+      rethrow;
+    }
   }
 
   factory BeadDesign.create({
@@ -231,15 +273,12 @@ class BeadDesign {
   BeadDesign resize(int newWidth, int newHeight) {
     final newGrid = List<List<BeadColor?>>.generate(
       newHeight,
-      (y) => List<BeadColor?>.generate(
-        newWidth,
-        (x) {
-          if (y < height && x < width) {
-            return grid[y][x];
-          }
-          return null;
-        },
-      ),
+      (y) => List<BeadColor?>.generate(newWidth, (x) {
+        if (y < height && x < width) {
+          return grid[y][x];
+        }
+        return null;
+      }),
     );
 
     return BeadDesign(
@@ -255,6 +294,150 @@ class BeadDesign {
 
   bool isValidPosition(int x, int y) {
     return x >= 0 && x < width && y >= 0 && y < height;
+  }
+
+  BeadDesign flipHorizontal() {
+    final newGrid = List<List<BeadColor?>>.generate(
+      height,
+      (y) => List<BeadColor?>.generate(width, (x) => grid[y][width - 1 - x]),
+    );
+
+    return BeadDesign(
+      id: id,
+      name: name,
+      width: width,
+      height: height,
+      grid: newGrid,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  BeadDesign flipVertical() {
+    final newGrid = List<List<BeadColor?>>.generate(
+      height,
+      (y) => List<BeadColor?>.generate(width, (x) => grid[height - 1 - y][x]),
+    );
+
+    return BeadDesign(
+      id: id,
+      name: name,
+      width: width,
+      height: height,
+      grid: newGrid,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  BeadDesign rotateClockwise() {
+    final newWidth = height;
+    final newHeight = width;
+    final newGrid = List<List<BeadColor?>>.generate(
+      newHeight,
+      (y) =>
+          List<BeadColor?>.generate(newWidth, (x) => grid[height - 1 - x][y]),
+    );
+
+    return BeadDesign(
+      id: id,
+      name: name,
+      width: newWidth,
+      height: newHeight,
+      grid: newGrid,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  BeadDesign rotateCounterClockwise() {
+    final newWidth = height;
+    final newHeight = width;
+    final newGrid = List<List<BeadColor?>>.generate(
+      newHeight,
+      (y) => List<BeadColor?>.generate(newWidth, (x) => grid[x][width - 1 - y]),
+    );
+
+    return BeadDesign(
+      id: id,
+      name: name,
+      width: newWidth,
+      height: newHeight,
+      grid: newGrid,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  BeadDesign rotate180() {
+    final newGrid = List<List<BeadColor?>>.generate(
+      height,
+      (y) => List<BeadColor?>.generate(
+        width,
+        (x) => grid[height - 1 - y][width - 1 - x],
+      ),
+    );
+
+    return BeadDesign(
+      id: id,
+      name: name,
+      width: width,
+      height: height,
+      grid: newGrid,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  BeadDesign getSubRegion(int startX, int startY, int endX, int endY) {
+    final clampedStartX = startX.clamp(0, width - 1);
+    final clampedStartY = startY.clamp(0, height - 1);
+    final clampedEndX = endX.clamp(0, width - 1);
+    final clampedEndY = endY.clamp(0, height - 1);
+
+    final regionWidth = (clampedEndX - clampedStartX + 1).abs();
+    final regionHeight = (clampedEndY - clampedStartY + 1).abs();
+
+    final actualStartX = startX < endX ? clampedStartX : clampedEndX;
+    final actualStartY = startY < endY ? clampedStartY : clampedEndY;
+
+    final newGrid = List<List<BeadColor?>>.generate(
+      regionHeight,
+      (y) => List<BeadColor?>.generate(
+        regionWidth,
+        (x) => grid[actualStartY + y][actualStartX + x],
+      ),
+    );
+
+    return BeadDesign(
+      id: '${id}_region_${DateTime.now().millisecondsSinceEpoch}',
+      name: '$name (选区)',
+      width: regionWidth,
+      height: regionHeight,
+      grid: newGrid,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  BeadDesign pasteRegion(BeadDesign region, int targetX, int targetY) {
+    var newDesign = this;
+
+    for (int y = 0; y < region.height; y++) {
+      for (int x = 0; x < region.width; x++) {
+        final destX = targetX + x;
+        final destY = targetY + y;
+
+        if (isValidPosition(destX, destY)) {
+          final bead = region.getBead(x, y);
+          if (bead != null) {
+            newDesign = newDesign.setBead(destX, destY, bead);
+          }
+        }
+      }
+    }
+
+    return newDesign;
   }
 
   @override

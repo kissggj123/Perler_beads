@@ -6,13 +6,11 @@ import '../providers/design_editor_provider.dart';
 import '../providers/app_provider.dart';
 
 class BeadCanvasWidget extends StatefulWidget {
-  final double cellSize;
   final double minScale;
   final double maxScale;
 
   const BeadCanvasWidget({
     super.key,
-    this.cellSize = 20.0,
     this.minScale = 0.25,
     this.maxScale = 4.0,
   });
@@ -31,6 +29,7 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   Offset? _lastPanPosition;
   OverlayEntry? _colorInfoOverlay;
   CanvasTransform? _lastTransform;
+  bool _isSelecting = false;
 
   @override
   void initState() {
@@ -43,12 +42,15 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   void _syncTransformFromProvider() {
     final provider = context.read<DesignEditorProvider>();
     final transform = provider.canvasTransform;
-    
+
     if (_lastTransform == transform) return;
     _lastTransform = transform;
-    
+
+    final safeScale = transform.scale.clamp(0.25, 4.0);
+    if (safeScale <= 0) return;
+
     final matrix = Matrix4.identity();
-    matrix.scale(transform.scale);
+    matrix.scale(safeScale);
     matrix.translate(transform.offset.dx, transform.offset.dy);
     _transformController.value = matrix;
   }
@@ -63,12 +65,17 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   void _handlePanStart(
     DragStartDetails details,
     DesignEditorProvider provider,
+    AppProvider appProvider,
   ) {
     if (provider.currentDesign == null) return;
     if (provider.isPreviewMode) return;
 
     provider.startBatchDrawing();
-    final position = _getPositionFromOffset(details.localPosition, provider);
+    final position = _getPositionFromOffset(
+      details.localPosition,
+      provider,
+      appProvider,
+    );
     if (position != null) {
       _lastX = position.$1;
       _lastY = position.$2;
@@ -80,11 +87,16 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   void _handlePanUpdate(
     DragUpdateDetails details,
     DesignEditorProvider provider,
+    AppProvider appProvider,
   ) {
     if (provider.currentDesign == null) return;
     if (provider.isPreviewMode) return;
 
-    final position = _getPositionFromOffset(details.localPosition, provider);
+    final position = _getPositionFromOffset(
+      details.localPosition,
+      provider,
+      appProvider,
+    );
     if (position != null && _isDragging) {
       final x = position.$1;
       final y = position.$2;
@@ -107,18 +119,28 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   (int, int)? _getPositionFromOffset(
     Offset localPosition,
     DesignEditorProvider provider,
+    AppProvider appProvider,
   ) {
     final design = provider.currentDesign;
     if (design == null) return null;
 
     final transform = _transformController.value;
-    final invertedTransform = Matrix4.inverted(transform);
+    final scale = transform.getMaxScaleOnAxis();
+    if (scale <= 0) return null;
+
+    Matrix4 invertedTransform;
+    try {
+      invertedTransform = Matrix4.inverted(transform);
+    } catch (e) {
+      return null;
+    }
+
     final transformedPoint = MatrixUtils.transformPoint(
       invertedTransform,
       localPosition,
     );
 
-    final cellSize = widget.cellSize;
+    final cellSize = appProvider.cellSize;
     final x = (transformedPoint.dx / cellSize).floor();
     final y = (transformedPoint.dy / cellSize).floor();
 
@@ -178,9 +200,8 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
                       children: [
                         Text(
                           bead.name,
-                          style: Theme.of(overlayContext).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: Theme.of(overlayContext).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         Text(
                           '代码: ${bead.code}',
@@ -194,7 +215,11 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
                 const Divider(height: 1),
                 const SizedBox(height: 8),
                 _buildColorInfoRow(overlayContext, 'HEX', bead.hex),
-                _buildColorInfoRow(overlayContext, 'RGB', 'R:${bead.red} G:${bead.green} B:${bead.blue}'),
+                _buildColorInfoRow(
+                  overlayContext,
+                  'RGB',
+                  'R:${bead.red} G:${bead.green} B:${bead.blue}',
+                ),
               ],
             ),
           ),
@@ -227,22 +252,24 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
           ),
           Text(
             value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
-              fontSize: 12,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
           ),
         ],
       ),
     );
   }
 
-  void _onPointerDown(PointerDownEvent event, DesignEditorProvider provider) {
+  void _onPointerDown(
+    PointerDownEvent event,
+    DesignEditorProvider provider,
+    AppProvider appProvider,
+  ) {
     if (event.kind == PointerDeviceKind.mouse) {
       if (event.buttons == 1) {
         final position = _getPositionFromOffset(
           event.localPosition,
           provider,
+          appProvider,
         );
         if (position != null) {
           if (provider.isPreviewMode) {
@@ -252,6 +279,15 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
               if (bead != null) {
                 _showColorInfo(bead, event.localPosition, context);
               }
+            }
+          } else if (provider.toolMode == ToolMode.select) {
+            if (provider.hasSelection &&
+                provider.currentSelection!.contains(position.$1, position.$2)) {
+              provider.startDraggingSelection(position.$1, position.$2);
+            } else {
+              provider.clearSelection();
+              provider.startSelection(position.$1, position.$2);
+              _isSelecting = true;
             }
           } else {
             provider.startBatchDrawing();
@@ -268,12 +304,17 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
     }
   }
 
-  void _onPointerMove(PointerMoveEvent event, DesignEditorProvider provider) {
+  void _onPointerMove(
+    PointerMoveEvent event,
+    DesignEditorProvider provider,
+    AppProvider appProvider,
+  ) {
     if (event.kind == PointerDeviceKind.mouse) {
       if (_isDragging && event.buttons == 1 && !provider.isPreviewMode) {
         final position = _getPositionFromOffset(
           event.localPosition,
           provider,
+          appProvider,
         );
         if (position != null) {
           if (position.$1 != _lastX || position.$2 != _lastY) {
@@ -281,6 +322,24 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
             _lastY = position.$2;
             provider.setBead(position.$1, position.$2);
           }
+        }
+      } else if (_isSelecting && event.buttons == 1) {
+        final position = _getPositionFromOffset(
+          event.localPosition,
+          provider,
+          appProvider,
+        );
+        if (position != null) {
+          provider.updateSelection(position.$1, position.$2);
+        }
+      } else if (provider.isDraggingSelection && event.buttons == 1) {
+        final position = _getPositionFromOffset(
+          event.localPosition,
+          provider,
+          appProvider,
+        );
+        if (position != null) {
+          provider.dragSelection(position.$1, position.$2);
         }
       } else if (_isPanning && event.buttons == 4) {
         if (_lastPanPosition != null) {
@@ -297,6 +356,13 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
     if (_isDragging) {
       provider.endBatchDrawing();
     }
+    if (_isSelecting) {
+      provider.endSelection();
+      _isSelecting = false;
+    }
+    if (provider.isDraggingSelection) {
+      provider.endDraggingSelection();
+    }
     _isDragging = false;
     _lastX = null;
     _lastY = null;
@@ -309,26 +375,29 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
     return Consumer2<DesignEditorProvider, AppProvider>(
       builder: (context, provider, appProvider, child) {
         _syncTransformFromProvider();
-        
+
         final design = provider.currentDesign;
 
         if (design == null) {
           return const Center(child: Text('请创建或加载一个设计'));
         }
 
-        final canvasWidth = design.width * widget.cellSize;
-        final canvasHeight = design.height * widget.cellSize;
+        final cellSize = appProvider.cellSize;
+        final canvasWidth = design.width * cellSize;
+        final canvasHeight = design.height * cellSize;
         final isPreviewMode = provider.isPreviewMode;
 
         return Listener(
-          onPointerDown: (event) => _onPointerDown(event, provider),
-          onPointerMove: (event) => _onPointerMove(event, provider),
+          onPointerDown: (event) =>
+              _onPointerDown(event, provider, appProvider),
+          onPointerMove: (event) =>
+              _onPointerMove(event, provider, appProvider),
           onPointerUp: (event) => _onPointerUp(event, provider),
           onPointerCancel: (event) => _onPointerUp(event, provider),
           onPointerSignal: (signal) {
             if (signal is PointerScrollEvent && !_isDragging) {
               final delta = signal.scrollDelta.dy;
-              if (delta != 0) {
+              if (delta != 0 && provider.currentDesign != null) {
                 final scaleDelta = delta > 0 ? -0.1 : 0.1;
 
                 final position = signal.localPosition;
@@ -338,8 +407,10 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
             }
           },
           child: GestureDetector(
-            onPanStart: (details) => _handlePanStart(details, provider),
-            onPanUpdate: (details) => _handlePanUpdate(details, provider),
+            onPanStart: (details) =>
+                _handlePanStart(details, provider, appProvider),
+            onPanUpdate: (details) =>
+                _handlePanUpdate(details, provider, appProvider),
             onPanEnd: (details) => _handlePanEnd(details, provider),
             child: InteractiveViewer(
               transformationController: _transformController,
@@ -355,13 +426,16 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
                 child: CustomPaint(
                   painter: BeadCanvasPainter(
                     design: design,
-                    cellSize: widget.cellSize,
+                    cellSize: cellSize,
                     showGrid: provider.showGrid,
                     showCoordinates: provider.showCoordinates,
                     showColorCodes: provider.showColorCodes,
                     selectedTool: provider.toolMode,
                     show3DEffect: appProvider.showBead3DEffect,
                     isPreviewMode: isPreviewMode,
+                    gridColor: appProvider.gridColor,
+                    coordinateFontSize: appProvider.effectiveCoordinateFontSize,
+                    selection: provider.currentSelection,
                   ),
                 ),
               ),
@@ -382,6 +456,9 @@ class BeadCanvasPainter extends CustomPainter {
   final ToolMode selectedTool;
   final bool show3DEffect;
   final bool isPreviewMode;
+  final String gridColor;
+  final double coordinateFontSize;
+  final Selection? selection;
 
   late final Paint _backgroundPaint;
   late final Paint _whitePaint;
@@ -389,6 +466,8 @@ class BeadCanvasPainter extends CustomPainter {
   late final Paint _majorGridPaint;
   late final Paint _highlightPaint;
   late final Paint _shadowPaint;
+  late final Paint _selectionPaint;
+  late final Paint _selectionFillPaint;
 
   BeadCanvasPainter({
     required this.design,
@@ -399,6 +478,9 @@ class BeadCanvasPainter extends CustomPainter {
     required this.selectedTool,
     required this.show3DEffect,
     this.isPreviewMode = false,
+    this.gridColor = '#9E9E9E',
+    this.coordinateFontSize = 7.0,
+    this.selection,
   }) {
     _backgroundPaint = Paint()
       ..color = Colors.grey.shade200
@@ -409,12 +491,12 @@ class BeadCanvasPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     _gridPaint = Paint()
-      ..color = Colors.grey.shade400
+      ..color = _parseColor(gridColor)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
 
     _majorGridPaint = Paint()
-      ..color = Colors.grey.shade600
+      ..color = _parseColor(gridColor).withValues(alpha: 0.8)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
@@ -425,6 +507,27 @@ class BeadCanvasPainter extends CustomPainter {
     _shadowPaint = Paint()
       ..color = Colors.black.withValues(alpha: 0.2)
       ..style = PaintingStyle.fill;
+
+    _selectionPaint = Paint()
+      ..color = Colors.blue
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    _selectionFillPaint = Paint()
+      ..color = Colors.blue.withValues(alpha: 0.1)
+      ..style = PaintingStyle.fill;
+  }
+
+  Color _parseColor(String hexColor) {
+    try {
+      hexColor = hexColor.replaceAll('#', '');
+      if (hexColor.length == 6) {
+        hexColor = 'FF$hexColor';
+      }
+      return Color(int.parse(hexColor, radix: 16));
+    } catch (e) {
+      return Colors.grey.shade400;
+    }
   }
 
   @override
@@ -437,8 +540,11 @@ class BeadCanvasPainter extends CustomPainter {
     if (showCoordinates && cellSize >= 12 && !isPreviewMode) {
       _drawCoordinates(canvas);
     }
-    if (showColorCodes && cellSize >= 18) {
+    if (showColorCodes && cellSize >= 15) {
       _drawColorCodes(canvas);
+    }
+    if (selection != null && !isPreviewMode) {
+      _drawSelection(canvas);
     }
   }
 
@@ -531,34 +637,75 @@ class BeadCanvasPainter extends CustomPainter {
       textAlign: TextAlign.center,
     );
 
-    final textStyle = TextStyle(
-      color: Colors.grey.shade700,
-      fontSize: cellSize * 0.35,
-      fontWeight: FontWeight.w500,
-    );
+    final coordinateBgPaint = Paint()
+      ..color = const Color(0xFF1565C0)
+      ..style = PaintingStyle.fill;
 
-    for (int x = 0; x < design.width; x += 5) {
+    final coordinateBgPaintAlt = Paint()
+      ..color = const Color(0xFF1976D2)
+      ..style = PaintingStyle.fill;
+
+    final padding = cellSize * 0.08;
+    final coordinateWidth = cellSize - padding * 2;
+    final coordinateHeight = cellSize * 0.55;
+    final topOffset = padding;
+
+    for (int x = 0; x < design.width; x++) {
+      final isAlt = x % 2 == 0;
+      final bgRect = Rect.fromLTWH(
+        x * cellSize + padding,
+        topOffset,
+        coordinateWidth,
+        coordinateHeight,
+      );
+
+      final rrect = RRect.fromRectAndRadius(
+        bgRect,
+        Radius.circular(cellSize * 0.08),
+      );
+      canvas.drawRRect(rrect, isAlt ? coordinateBgPaint : coordinateBgPaintAlt);
+
+      final textStyle = TextStyle(
+        color: Colors.white,
+        fontSize: coordinateFontSize,
+        fontWeight: FontWeight.bold,
+        height: 1.0,
+      );
       textPainter.text = TextSpan(text: x.toString(), style: textStyle);
       textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(
-          x * cellSize + cellSize / 2 - textPainter.width / 2,
-          cellSize * 0.1,
-        ),
-      );
+
+      final textX = x * cellSize + cellSize / 2 - textPainter.width / 2;
+      final textY = topOffset + (coordinateHeight - textPainter.height) / 2;
+      textPainter.paint(canvas, Offset(textX, textY));
     }
 
-    for (int y = 5; y < design.height; y += 5) {
+    for (int y = 0; y < design.height; y++) {
+      final isAlt = y % 2 == 0;
+      final bgRect = Rect.fromLTWH(
+        padding,
+        y * cellSize + padding,
+        coordinateHeight,
+        coordinateWidth,
+      );
+
+      final rrect = RRect.fromRectAndRadius(
+        bgRect,
+        Radius.circular(cellSize * 0.08),
+      );
+      canvas.drawRRect(rrect, isAlt ? coordinateBgPaint : coordinateBgPaintAlt);
+
+      final textStyle = TextStyle(
+        color: Colors.white,
+        fontSize: coordinateFontSize,
+        fontWeight: FontWeight.bold,
+        height: 1.0,
+      );
       textPainter.text = TextSpan(text: y.toString(), style: textStyle);
       textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset(
-          cellSize * 0.1,
-          y * cellSize + cellSize / 2 - textPainter.height / 2,
-        ),
-      );
+
+      final textX = padding + (coordinateHeight - textPainter.width) / 2;
+      final textY = y * cellSize + cellSize / 2 - textPainter.height / 2;
+      textPainter.paint(canvas, Offset(textX, textY));
     }
   }
 
@@ -568,28 +715,209 @@ class BeadCanvasPainter extends CustomPainter {
       textAlign: TextAlign.center,
     );
 
-    final fontSize = cellSize * 0.35;
-
     for (int y = 0; y < design.height; y++) {
       for (int x = 0; x < design.width; x++) {
         final bead = design.getBead(x, y);
         if (bead == null) continue;
 
-        final textColor = bead.isLight ? Colors.black87 : Colors.white;
+        final code = bead.code;
+        final padding = cellSize * 0.1;
+        final availableWidth = cellSize - padding * 2;
+        final availableHeight = cellSize - padding * 2;
+
+        double fontSize = cellSize * 0.45;
+        if (code.length > 2) {
+          fontSize = fontSize * 2.5 / code.length;
+        }
+        fontSize = fontSize.clamp(5.0, cellSize * 0.5);
+
+        final textColor = _getContrastTextColor(bead.color);
+        final outlineColor = _getOutlineColor(bead.color);
+
         final textStyle = TextStyle(
           color: textColor,
           fontSize: fontSize,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.bold,
+          height: 1.0,
+          letterSpacing: 0.5,
+          shadows: [
+            Shadow(
+              color: outlineColor,
+              offset: const Offset(0.5, 0.5),
+              blurRadius: 0.5,
+            ),
+            Shadow(
+              color: outlineColor,
+              offset: const Offset(-0.5, -0.5),
+              blurRadius: 0.5,
+            ),
+            Shadow(
+              color: outlineColor,
+              offset: const Offset(0.5, -0.5),
+              blurRadius: 0.5,
+            ),
+            Shadow(
+              color: outlineColor,
+              offset: const Offset(-0.5, 0.5),
+              blurRadius: 0.5,
+            ),
+          ],
         );
 
-        textPainter.text = TextSpan(text: bead.code, style: textStyle);
+        textPainter.text = TextSpan(text: code, style: textStyle);
         textPainter.layout();
 
-        final centerX = x * cellSize + cellSize / 2 - textPainter.width / 2;
-        final centerY = y * cellSize + cellSize / 2 - textPainter.height / 2;
+        final textWidth = textPainter.width;
+        final textHeight = textPainter.height;
 
-        textPainter.paint(canvas, Offset(centerX, centerY));
+        if (textWidth > availableWidth || textHeight > availableHeight) {
+          final scaleX = availableWidth / textWidth;
+          final scaleY = availableHeight / textHeight;
+          final scale = scaleX < scaleY ? scaleX : scaleY;
+          fontSize = fontSize * scale;
+
+          final adjustedStyle = textStyle.copyWith(fontSize: fontSize);
+          textPainter.text = TextSpan(text: code, style: adjustedStyle);
+          textPainter.layout();
+        }
+
+        final cellCenterX = x * cellSize + cellSize / 2;
+        final cellCenterY = y * cellSize + cellSize / 2;
+        final textX = cellCenterX - textPainter.width / 2;
+        final textY = cellCenterY - textPainter.height / 2;
+
+        textPainter.paint(canvas, Offset(textX, textY));
       }
+    }
+  }
+
+  Color _getContrastTextColor(Color backgroundColor) {
+    final r = (backgroundColor.r * 255.0).round().clamp(0, 255);
+    final g = (backgroundColor.g * 255.0).round().clamp(0, 255);
+    final b = (backgroundColor.b * 255.0).round().clamp(0, 255);
+    final luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    if (luminance > 0.5) {
+      return const Color(0xFF1A1A1A);
+    } else {
+      return const Color(0xFFFFFFFF);
+    }
+  }
+
+  Color _getOutlineColor(Color backgroundColor) {
+    final r = (backgroundColor.r * 255.0).round().clamp(0, 255);
+    final g = (backgroundColor.g * 255.0).round().clamp(0, 255);
+    final b = (backgroundColor.b * 255.0).round().clamp(0, 255);
+    final luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    if (luminance > 0.5) {
+      return Colors.white.withValues(alpha: 0.4);
+    } else {
+      return Colors.black.withValues(alpha: 0.4);
+    }
+  }
+
+  void _drawSelection(Canvas canvas) {
+    if (selection == null) return;
+
+    final normalized = selection!.normalized();
+    final rect = Rect.fromLTWH(
+      normalized.left * cellSize,
+      normalized.top * cellSize,
+      normalized.width * cellSize,
+      normalized.height * cellSize,
+    );
+
+    canvas.drawRect(rect, _selectionFillPaint);
+    canvas.drawRect(rect, _selectionPaint);
+
+    final dashSize = 5.0;
+    final gapSize = 5.0;
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    _drawDashedLine(
+      canvas,
+      Offset(rect.left, rect.top),
+      Offset(rect.right, rect.top),
+      dashSize,
+      gapSize,
+      paint,
+    );
+    _drawDashedLine(
+      canvas,
+      Offset(rect.left, rect.bottom),
+      Offset(rect.right, rect.bottom),
+      dashSize,
+      gapSize,
+      paint,
+    );
+    _drawDashedLine(
+      canvas,
+      Offset(rect.left, rect.top),
+      Offset(rect.left, rect.bottom),
+      dashSize,
+      gapSize,
+      paint,
+    );
+    _drawDashedLine(
+      canvas,
+      Offset(rect.right, rect.top),
+      Offset(rect.right, rect.bottom),
+      dashSize,
+      gapSize,
+      paint,
+    );
+
+    final handleSize = 8.0;
+    final handles = [
+      Offset(rect.left, rect.top),
+      Offset(rect.right, rect.top),
+      Offset(rect.left, rect.bottom),
+      Offset(rect.right, rect.bottom),
+    ];
+
+    for (final handle in handles) {
+      canvas.drawRect(
+        Rect.fromCenter(center: handle, width: handleSize, height: handleSize),
+        Paint()..color = Colors.blue,
+      );
+      canvas.drawRect(
+        Rect.fromCenter(center: handle, width: handleSize, height: handleSize),
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0,
+      );
+    }
+  }
+
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    double dashSize,
+    double gapSize,
+    Paint paint,
+  ) {
+    final totalDistance = (end - start).distance;
+    if (totalDistance == 0) return;
+
+    final direction = (end - start) / totalDistance;
+    var currentDistance = 0.0;
+
+    while (currentDistance < totalDistance) {
+      final dashStart = start + direction * currentDistance;
+      final dashEndDistance = currentDistance + dashSize;
+      final actualDashEndDistance = dashEndDistance > totalDistance
+          ? totalDistance
+          : dashEndDistance;
+      final dashEnd = start + direction * actualDashEndDistance;
+
+      canvas.drawLine(dashStart, dashEnd, paint);
+      currentDistance += dashSize + gapSize;
     }
   }
 
@@ -602,6 +930,9 @@ class BeadCanvasPainter extends CustomPainter {
         oldDelegate.showColorCodes != showColorCodes ||
         oldDelegate.selectedTool != selectedTool ||
         oldDelegate.show3DEffect != show3DEffect ||
-        oldDelegate.isPreviewMode != isPreviewMode;
+        oldDelegate.isPreviewMode != isPreviewMode ||
+        oldDelegate.gridColor != gridColor ||
+        oldDelegate.coordinateFontSize != coordinateFontSize ||
+        oldDelegate.selection != selection;
   }
 }

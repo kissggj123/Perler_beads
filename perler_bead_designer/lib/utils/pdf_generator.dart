@@ -3,26 +3,37 @@ import 'dart:math' as math;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 import '../models/bead_design.dart';
 import '../models/bead_color.dart';
+import '../services/font_service.dart';
 
-enum PdfPageSize {
-  a4,
-  a3,
-  letter,
-  legal,
-}
+enum PdfPageSize { a4, a3, letter, legal }
 
-enum PdfOrientation {
-  portrait,
-  landscape,
-}
+enum PdfOrientation { portrait, landscape }
 
 class PdfGenerator {
   static const double _gridLineWidth = 0.5;
   static const double _margin = 20.0;
+  static const double _rowCoordinateWidth = 45.0;
+  static const double _colCoordinateHeight = 35.0;
+  static const double _minCoordinateFontSize = 5.0;
+  static const double _maxCoordinateFontSize = 10.0;
 
-  static PdfPageFormat _getPageFormat(PdfPageSize pageSize, PdfOrientation orientation) {
+  static final FontService _fontService = FontService();
+
+  static Future<pw.Font> _loadChineseFont() async {
+    final result = await _fontService.loadChineseFont();
+    debugPrint(
+      '字体加载来源: ${result.source}${result.sourcePath != null ? " (${result.sourcePath})" : ""}',
+    );
+    return result.font;
+  }
+
+  static PdfPageFormat _getPageFormat(
+    PdfPageSize pageSize,
+    PdfOrientation orientation,
+  ) {
     PdfPageFormat format;
     switch (pageSize) {
       case PdfPageSize.a4:
@@ -54,7 +65,10 @@ class PdfGenerator {
     bool showCoordinates = true,
     String? customPath,
   }) async {
-    final pdf = pw.Document();
+    final font = await _loadChineseFont();
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(base: font, bold: font),
+    );
 
     final pageFormat = _getPageFormat(pageSize, orientation);
     final availableWidth = pageFormat.availableWidth - _margin * 2;
@@ -82,15 +96,11 @@ class PdfGenerator {
         pw.MultiPage(
           pageFormat: pageFormat,
           margin: pw.EdgeInsets.all(_margin),
-          header: (context) => _buildHeader(design, pageIndex + 1, pages.length),
+          header: (context) =>
+              _buildHeader(design, pageIndex + 1, pages.length),
           build: (context) => [
             pw.SizedBox(height: 10),
-            _buildDesignGrid(
-              pageData,
-              beadSize,
-              showGrid,
-              showCoordinates,
-            ),
+            _buildDesignGrid(pageData, beadSize, showGrid, showCoordinates),
             pw.SizedBox(height: 20),
             _buildLegend(pageData.usedColors),
           ],
@@ -109,7 +119,10 @@ class PdfGenerator {
     PdfOrientation orientation = PdfOrientation.portrait,
     String? customPath,
   }) async {
-    final pdf = pw.Document();
+    final font = await _loadChineseFont();
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(base: font, bold: font),
+    );
     final pageFormat = _getPageFormat(pageSize, orientation);
 
     final beadCounts = design.getBeadCountsWithColors();
@@ -142,9 +155,10 @@ class PdfGenerator {
     double availableHeight,
     bool showCoordinates,
   ) {
-    final coordinateOffset = showCoordinates ? 30.0 : 0.0;
+    final coordinateOffset = showCoordinates ? _rowCoordinateWidth : 0.0;
     final effectiveWidth = availableWidth - coordinateOffset;
-    final effectiveHeight = availableHeight - coordinateOffset - 100;
+    final effectiveHeight =
+        availableHeight - (showCoordinates ? _colCoordinateHeight : 0.0) - 100;
 
     final beadSizeByWidth = effectiveWidth / gridWidth;
     final beadSizeByHeight = effectiveHeight / gridHeight;
@@ -159,25 +173,32 @@ class PdfGenerator {
     double beadSize,
     bool showCoordinates,
   ) {
-    final coordinateOffset = showCoordinates ? 30.0 : 0.0;
+    final coordinateOffset = showCoordinates ? _rowCoordinateWidth : 0.0;
     final effectiveWidth = availableWidth - coordinateOffset;
-    final effectiveHeight = availableHeight - coordinateOffset - 100;
+    final effectiveHeight =
+        availableHeight - (showCoordinates ? _colCoordinateHeight : 0.0) - 100;
 
     final beadsPerRow = (effectiveWidth / beadSize).floor();
     final beadsPerColumn = (effectiveHeight / beadSize).floor();
 
     if (design.width <= beadsPerRow && design.height <= beadsPerColumn) {
-      return [_PageData(
-        grid: design.grid,
-        startRow: 0,
-        startCol: 0,
-        usedColors: design.getUsedColors(),
-      )];
+      return [
+        _PageData(
+          grid: design.grid,
+          startRow: 0,
+          startCol: 0,
+          usedColors: design.getUsedColors(),
+        ),
+      ];
     }
 
     final pages = <_PageData>[];
 
-    for (int rowStart = 0; rowStart < design.height; rowStart += beadsPerColumn) {
+    for (
+      int rowStart = 0;
+      rowStart < design.height;
+      rowStart += beadsPerColumn
+    ) {
       for (int colStart = 0; colStart < design.width; colStart += beadsPerRow) {
         final rowEnd = math.min(rowStart + beadsPerColumn, design.height);
         final colEnd = math.min(colStart + beadsPerRow, design.width);
@@ -197,42 +218,40 @@ class PdfGenerator {
           pageGrid.add(row);
         }
 
-        pages.add(_PageData(
-          grid: pageGrid,
-          startRow: rowStart,
-          startCol: colStart,
-          usedColors: usedColors.values.toList(),
-        ));
+        pages.add(
+          _PageData(
+            grid: pageGrid,
+            startRow: rowStart,
+            startCol: colStart,
+            usedColors: usedColors.values.toList(),
+          ),
+        );
       }
     }
 
     return pages;
   }
 
-  static pw.Widget _buildHeader(BeadDesign design, int currentPage, int totalPages) {
+  static pw.Widget _buildHeader(
+    BeadDesign design,
+    int currentPage,
+    int totalPages,
+  ) {
     return pw.Container(
       padding: pw.EdgeInsets.only(bottom: 10),
       decoration: pw.BoxDecoration(
-        border: pw.Border(
-          bottom: pw.BorderSide(color: PdfColors.grey300),
-        ),
+        border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300)),
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
             design.name,
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+            style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
           ),
           pw.Text(
             '第 $currentPage / $totalPages 页',
-            style: pw.TextStyle(
-              fontSize: 12,
-              color: PdfColors.grey600,
-            ),
+            style: pw.TextStyle(fontSize: 12, color: PdfColors.grey600),
           ),
         ],
       ),
@@ -243,29 +262,42 @@ class PdfGenerator {
     return pw.Container(
       padding: pw.EdgeInsets.only(bottom: 10),
       decoration: pw.BoxDecoration(
-        border: pw.Border(
-          bottom: pw.BorderSide(color: PdfColors.grey300),
-        ),
+        border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300)),
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
             '${design.name} - 材料清单',
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-            ),
+            style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
           ),
           pw.Text(
             '生成日期: ${DateTime.now().toString().split('.')[0]}',
-            style: pw.TextStyle(
-              fontSize: 10,
-              color: PdfColors.grey600,
-            ),
+            style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
           ),
         ],
       ),
+    );
+  }
+
+  static double _calculateCoordinateFontSize(int maxNumber, double beadSize) {
+    final digits = maxNumber.toString().length;
+    double baseFontSize;
+
+    if (digits >= 4) {
+      baseFontSize = _minCoordinateFontSize;
+    } else if (digits == 3) {
+      baseFontSize = 6.0;
+    } else if (digits == 2) {
+      baseFontSize = 8.0;
+    } else {
+      baseFontSize = _maxCoordinateFontSize;
+    }
+
+    final sizeFactor = (beadSize / 10.0).clamp(0.7, 1.3);
+    return (baseFontSize * sizeFactor).clamp(
+      _minCoordinateFontSize,
+      _maxCoordinateFontSize,
     );
   }
 
@@ -275,22 +307,54 @@ class PdfGenerator {
     bool showGrid,
     bool showCoordinates,
   ) {
+    final maxRowNum = pageData.startRow + pageData.grid.length;
+    final maxColNum = pageData.grid.isEmpty
+        ? 0
+        : pageData.startCol + pageData.grid.first.length;
+    final maxNumber = math.max(maxRowNum, maxColNum);
+    final fontSize = _calculateCoordinateFontSize(maxNumber, beadSize);
+
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         if (showCoordinates)
           pw.Container(
-            width: 25,
+            width: _rowCoordinateWidth,
+            decoration: pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFFF5F5F5),
+              border: pw.Border(
+                right: pw.BorderSide(color: PdfColors.grey400, width: 1.5),
+              ),
+            ),
             child: pw.Column(
               children: [
-                pw.SizedBox(height: 25),
+                pw.Container(
+                  height: _colCoordinateHeight,
+                  decoration: pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFFE8E8E8),
+                    border: pw.Border(
+                      bottom: pw.BorderSide(color: PdfColors.grey400),
+                    ),
+                  ),
+                ),
                 ...List.generate(pageData.grid.length, (index) {
+                  final rowNum = pageData.startRow + index;
+                  final isEvenRow = rowNum % 2 == 0;
                   return pw.Container(
                     height: beadSize,
                     alignment: pw.Alignment.center,
+                    decoration: pw.BoxDecoration(
+                      color: isEvenRow
+                          ? PdfColor.fromInt(0xFFF0F0F0)
+                          : PdfColor.fromInt(0xFFFAFAFA),
+                    ),
                     child: pw.Text(
-                      '${pageData.startRow + index}',
-                      style: pw.TextStyle(fontSize: 8),
+                      '$rowNum',
+                      style: pw.TextStyle(
+                        fontSize: fontSize,
+                        color: PdfColors.grey800,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
                     ),
                   );
                 }),
@@ -302,24 +366,46 @@ class PdfGenerator {
             children: [
               if (showCoordinates)
                 pw.Container(
-                  height: 25,
+                  height: _colCoordinateHeight,
+                  decoration: pw.BoxDecoration(
+                    color: PdfColor.fromInt(0xFFF5F5F5),
+                    border: pw.Border(
+                      bottom: pw.BorderSide(
+                        color: PdfColors.grey400,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
                   child: pw.Row(
                     children: List.generate(
                       pageData.grid.isEmpty ? 0 : pageData.grid.first.length,
-                      (index) => pw.Container(
-                        width: beadSize,
-                        alignment: pw.Alignment.center,
-                        child: pw.Text(
-                          '${pageData.startCol + index}',
-                          style: pw.TextStyle(fontSize: 8),
-                        ),
-                      ),
+                      (index) {
+                        final colNum = pageData.startCol + index;
+                        final isEvenCol = colNum % 2 == 0;
+                        return pw.Container(
+                          width: beadSize,
+                          alignment: pw.Alignment.center,
+                          decoration: pw.BoxDecoration(
+                            color: isEvenCol
+                                ? PdfColor.fromInt(0xFFF0F0F0)
+                                : PdfColor.fromInt(0xFFFAFAFA),
+                          ),
+                          child: pw.Text(
+                            '$colNum',
+                            style: pw.TextStyle(
+                              fontSize: fontSize,
+                              color: PdfColors.grey800,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
               pw.Container(
                 decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.black),
+                  border: pw.Border.all(color: PdfColors.black, width: 1.5),
                 ),
                 child: pw.Column(
                   children: pageData.grid.map((row) {
@@ -369,10 +455,7 @@ class PdfGenerator {
       children: [
         pw.Text(
           '颜色图例',
-          style: pw.TextStyle(
-            fontSize: 12,
-            fontWeight: pw.FontWeight.bold,
-          ),
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
         ),
         pw.SizedBox(height: 8),
         pw.Wrap(
@@ -437,7 +520,9 @@ class PdfGenerator {
     );
   }
 
-  static pw.Widget _buildMaterialTable(List<MapEntry<BeadColor, int>> sortedColors) {
+  static pw.Widget _buildMaterialTable(
+    List<MapEntry<BeadColor, int>> sortedColors,
+  ) {
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey300),
       children: [
@@ -487,7 +572,11 @@ class PdfGenerator {
     );
   }
 
-  static pw.Widget _buildTableCell(String text, {bool isHeader = false, double? width}) {
+  static pw.Widget _buildTableCell(
+    String text, {
+    bool isHeader = false,
+    double? width,
+  }) {
     return pw.Container(
       width: width,
       padding: pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -505,33 +594,29 @@ class PdfGenerator {
     return pw.Container(
       padding: pw.EdgeInsets.only(top: 10),
       decoration: pw.BoxDecoration(
-        border: pw.Border(
-          top: pw.BorderSide(color: PdfColors.grey300),
-        ),
+        border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300)),
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
             'Perler Bead Designer',
-            style: pw.TextStyle(
-              fontSize: 9,
-              color: PdfColors.grey600,
-            ),
+            style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
           ),
           pw.Text(
             '创建于: ${design.createdAt.toString().split('.')[0]}',
-            style: pw.TextStyle(
-              fontSize: 9,
-              color: PdfColors.grey600,
-            ),
+            style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
           ),
         ],
       ),
     );
   }
 
-  static Future<File> _savePdf(pw.Document pdf, String name, String? customPath) async {
+  static Future<File> _savePdf(
+    pw.Document pdf,
+    String name,
+    String? customPath,
+  ) async {
     final bytes = await pdf.save();
 
     String filePath;
@@ -540,12 +625,17 @@ class PdfGenerator {
     } else {
       final directory = await getApplicationDocumentsDirectory();
       final safeName = name.replaceAll(RegExp(r'[^\w\s-]'), '_');
-      filePath = '${directory.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      filePath =
+          '${directory.path}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.pdf';
     }
 
     final file = File(filePath);
     await file.writeAsBytes(bytes);
     return file;
+  }
+
+  static Future<void> clearFontCache() async {
+    await _fontService.clearCache();
   }
 }
 

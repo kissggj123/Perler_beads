@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/design_editor_provider.dart';
+import '../utils/platform_utils.dart';
 
 class ToolBarWidget extends StatelessWidget {
   const ToolBarWidget({super.key});
@@ -128,6 +129,16 @@ class ToolBarWidget extends StatelessWidget {
           isDisabled: isPreviewMode,
           onPressed: () => provider.setToolMode(ToolMode.fill),
         ),
+        const SizedBox(width: 4),
+        _buildToolButton(
+          context,
+          icon: Icons.crop_free,
+          label: '选区',
+          shortcut: 'S',
+          isSelected: provider.toolMode == ToolMode.select,
+          isDisabled: isPreviewMode,
+          onPressed: () => provider.setToolMode(ToolMode.select),
+        ),
       ],
     );
   }
@@ -193,7 +204,7 @@ class ToolBarWidget extends StatelessWidget {
           context,
           icon: Icons.undo,
           label: '撤销',
-          shortcut: 'Ctrl+Z',
+          shortcut: '${PlatformUtils.ctrlKey}+Z',
           isEnabled: provider.canUndo,
           onPressed: provider.undo,
         ),
@@ -202,7 +213,7 @@ class ToolBarWidget extends StatelessWidget {
           context,
           icon: Icons.redo,
           label: '重做',
-          shortcut: 'Ctrl+Y',
+          shortcut: '${PlatformUtils.ctrlKey}+Y',
           isEnabled: provider.canRedo,
           onPressed: provider.redo,
         ),
@@ -267,6 +278,54 @@ class ToolBarWidget extends StatelessWidget {
             onPressed: provider.hasDesign && provider.selectedColor != null
                 ? () => _showFillAllConfirmDialog(context, provider)
                 : null,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Tooltip(
+          message: '水平镜像',
+          child: IconButton(
+            icon: const Icon(Icons.flip),
+            onPressed: provider.hasDesign
+                ? () => provider.flipHorizontal()
+                : null,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Tooltip(
+          message: '垂直镜像',
+          child: IconButton(
+            icon: const Icon(Icons.flip_sharp),
+            onPressed: provider.hasDesign
+                ? () => provider.flipVertical()
+                : null,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Tooltip(
+          message: '顺时针旋转90°',
+          child: IconButton(
+            icon: const Icon(Icons.rotate_right),
+            onPressed: provider.hasDesign
+                ? () => provider.rotateClockwise()
+                : null,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Tooltip(
+          message: '逆时针旋转90°',
+          child: IconButton(
+            icon: const Icon(Icons.rotate_left),
+            onPressed: provider.hasDesign
+                ? () => provider.rotateCounterClockwise()
+                : null,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Tooltip(
+          message: '旋转180°',
+          child: IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: provider.hasDesign ? () => provider.rotate180() : null,
           ),
         ),
       ],

@@ -10,7 +10,9 @@ import '../services/image_processing_service.dart'
         AlgorithmStyle,
         AlgorithmStyleExtension,
         ExperimentalEffect,
-        ExperimentalEffectExtension;
+        ExperimentalEffectExtension,
+        BackgroundRemovalMode,
+        MaskEditTool;
 import '../widgets/image_preview_widget.dart';
 import '../widgets/size_settings_widget.dart';
 
@@ -26,16 +28,17 @@ class ImageImportScreen extends StatefulWidget {
 class _ImageImportScreenState extends State<ImageImportScreen> {
   final TextEditingController _designNameController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  late final ImageProcessingProvider _provider;
 
   @override
   void initState() {
     super.initState();
+    _provider = ImageProcessingProvider();
     _designNameController.text =
         '导入设计 ${DateTime.now().millisecondsSinceEpoch % 10000}';
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = context.read<ImageProcessingProvider>();
-      provider.initializeGpuProcessor();
+      _provider.initializeGpuProcessor();
     });
   }
 
@@ -43,13 +46,14 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
   void dispose() {
     _designNameController.dispose();
     _scrollController.dispose();
+    _provider.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ImageProcessingProvider(),
+    return ChangeNotifierProvider.value(
+      value: _provider,
       child: Consumer<ImageProcessingProvider>(
         builder: (context, provider, child) {
           return Scaffold(
@@ -280,6 +284,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                   alternativeSizes: provider.alternativeSizes,
                   onApplyRecommendedSize: provider.applyRecommendedSize,
                 ),
+                const SizedBox(height: 16),
+                _buildBackgroundRemovalCard(context, provider),
                 const SizedBox(height: 16),
                 _buildImageAdjustmentsCard(context, provider),
                 const SizedBox(height: 16),
@@ -1227,6 +1233,505 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     );
   }
 
+  Widget _buildBackgroundRemovalCard(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.auto_fix_high),
+                    const SizedBox(width: 8),
+                    Text(
+                      '智能抠图',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
+                ),
+                Switch(
+                  value: provider.backgroundRemovalEnabled,
+                  onChanged: provider.isRemovingBackground
+                      ? null
+                      : (value) => provider.setBackgroundRemovalEnabled(value),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '自动识别并移除图片背景，让主体更加突出',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (provider.backgroundRemovalEnabled) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 12),
+              _buildBackgroundRemovalModeSelector(context, provider),
+              const SizedBox(height: 12),
+              _buildToleranceSlider(context, provider),
+              if (provider.backgroundMask != null) ...[
+                const SizedBox(height: 12),
+                _buildMaskEditTools(context, provider),
+                const SizedBox(height: 12),
+                _buildMaskPreview(context, provider),
+              ],
+              if (provider.isRemovingBackground) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '正在处理...',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackgroundRemovalModeSelector(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('抠图模式', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                provider.backgroundRemovalDescription ?? '选择模式',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ChoiceChip(
+              avatar: const Icon(Icons.auto_awesome, size: 16),
+              label: const Text('智能自动'),
+              selected:
+                  provider.backgroundRemovalMode == BackgroundRemovalMode.auto,
+              onSelected: (_) =>
+                  provider.setBackgroundRemovalMode(BackgroundRemovalMode.auto),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.border_outer, size: 16),
+              label: const Text('边缘填充'),
+              selected:
+                  provider.backgroundRemovalMode ==
+                  BackgroundRemovalMode.edgeFloodFill,
+              onSelected: (_) => provider.setBackgroundRemovalMode(
+                BackgroundRemovalMode.edgeFloodFill,
+              ),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.color_lens, size: 16),
+              label: const Text('颜色识别'),
+              selected:
+                  provider.backgroundRemovalMode ==
+                  BackgroundRemovalMode.colorBased,
+              onSelected: (_) => provider.setBackgroundRemovalMode(
+                BackgroundRemovalMode.colorBased,
+              ),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.grain, size: 16),
+              label: const Text('Canny边缘'),
+              selected:
+                  provider.backgroundRemovalMode ==
+                  BackgroundRemovalMode.cannyEdge,
+              onSelected: (_) => provider.setBackgroundRemovalMode(
+                BackgroundRemovalMode.cannyEdge,
+              ),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.texture, size: 16),
+              label: const Text('区域生长'),
+              selected:
+                  provider.backgroundRemovalMode ==
+                  BackgroundRemovalMode.regionGrowing,
+              onSelected: (_) => provider.setBackgroundRemovalMode(
+                BackgroundRemovalMode.regionGrowing,
+              ),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.pan_tool, size: 16),
+              label: const Text('手动'),
+              selected:
+                  provider.backgroundRemovalMode ==
+                  BackgroundRemovalMode.manual,
+              onSelected: (_) => provider.setBackgroundRemovalMode(
+                BackgroundRemovalMode.manual,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildToleranceSlider(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Row(
+      children: [
+        Icon(
+          Icons.tune,
+          size: 20,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 60,
+          child: Text('容差', style: Theme.of(context).textTheme.bodyMedium),
+        ),
+        Expanded(
+          child: Slider(
+            value: provider.backgroundRemovalTolerance,
+            min: 1.0,
+            max: 100.0,
+            divisions: 99,
+            onChanged: (value) {
+              provider.setBackgroundRemovalTolerance(value);
+            },
+            onChangeEnd: (value) {
+              if (provider.backgroundRemovalEnabled) {
+                provider.performBackgroundRemoval();
+              }
+            },
+          ),
+        ),
+        SizedBox(
+          width: 50,
+          child: Text(
+            provider.backgroundRemovalTolerance.toStringAsFixed(0),
+            textAlign: TextAlign.right,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMaskEditTools(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('手动调整工具', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: [
+            ChoiceChip(
+              avatar: const Icon(Icons.brush, size: 16),
+              label: const Text('画笔'),
+              selected: provider.currentMaskEditTool == MaskEditTool.brush,
+              onSelected: (_) => provider.setMaskEditTool(MaskEditTool.brush),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.cleaning_services, size: 16),
+              label: const Text('橡皮'),
+              selected: provider.currentMaskEditTool == MaskEditTool.eraser,
+              onSelected: (_) => provider.setMaskEditTool(MaskEditTool.eraser),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.auto_fix_high, size: 16),
+              label: const Text('魔棒'),
+              selected: provider.currentMaskEditTool == MaskEditTool.magicWand,
+              onSelected: (_) =>
+                  provider.setMaskEditTool(MaskEditTool.magicWand),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.edit, size: 16),
+              label: const Text('套索'),
+              selected: provider.currentMaskEditTool == MaskEditTool.lasso,
+              onSelected: (_) => provider.setMaskEditTool(MaskEditTool.lasso),
+            ),
+            ChoiceChip(
+              avatar: const Icon(Icons.tune, size: 16),
+              label: const Text('边缘细化'),
+              selected:
+                  provider.currentMaskEditTool == MaskEditTool.edgeRefinement,
+              onSelected: (_) =>
+                  provider.setMaskEditTool(MaskEditTool.edgeRefinement),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              Icons.line_weight,
+              size: 20,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 60,
+              child: Text(
+                '笔刷大小',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+            Expanded(
+              child: Slider(
+                value: provider.maskEditBrushSize.toDouble(),
+                min: 5,
+                max: 100,
+                divisions: 19,
+                onChanged: (value) {
+                  provider.setMaskEditBrushSize(value.round());
+                },
+              ),
+            ),
+            SizedBox(
+              width: 50,
+              child: Text(
+                provider.maskEditBrushSize.toString(),
+                textAlign: TextAlign.right,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => provider.invertMask(),
+              icon: const Icon(Icons.flip, size: 18),
+              label: const Text('反转'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => provider.dilateMask(),
+              icon: const Icon(Icons.expand, size: 18),
+              label: const Text('扩展'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => provider.erodeMask(),
+              icon: const Icon(Icons.compress, size: 18),
+              label: const Text('收缩'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => provider.smoothMask(),
+              icon: const Icon(Icons.blur_on, size: 18),
+              label: const Text('平滑'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => provider.resetMask(),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('重置'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMaskPreview(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.preview,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text('抠图预览', style: Theme.of(context).textTheme.titleSmall),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _getConfidenceColor(
+                    context,
+                    provider.backgroundRemovalConfidence,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '置信度: ${(provider.backgroundRemovalConfidence * 100).toStringAsFixed(0)}%',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: double.infinity,
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.outline.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Stack(
+                children: [
+                  _buildCheckerboardBackground(context),
+                  if (provider.flutterBackgroundRemovedImage != null)
+                    Center(
+                      child: RawImage(
+                        image: provider.flutterBackgroundRemovedImage,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  if (provider.backgroundMask != null)
+                    GestureDetector(
+                      onPanStart: (details) {
+                        _handleMaskEdit(
+                          provider,
+                          details.localPosition,
+                          context,
+                        );
+                      },
+                      onPanUpdate: (details) {
+                        _handleMaskEdit(
+                          provider,
+                          details.localPosition,
+                          context,
+                        );
+                      },
+                      child: Container(
+                        color: Colors.transparent,
+                        width: double.infinity,
+                        height: double.infinity,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '提示：在预览区域拖动以使用当前工具编辑蒙版',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              if (provider.backgroundMask != null)
+                Text(
+                  '${provider.backgroundMask!.length}×${provider.backgroundMask![0].length}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckerboardBackground(BuildContext context) {
+    return CustomPaint(
+      painter: CheckerboardPainter(
+        color1: Colors.grey.shade200,
+        color2: Colors.grey.shade300,
+        squareSize: 10,
+      ),
+      size: const Size(double.infinity, double.infinity),
+    );
+  }
+
+  void _handleMaskEdit(
+    ImageProcessingProvider provider,
+    Offset localPosition,
+    BuildContext context,
+  ) {
+    if (provider.backgroundMask == null || provider.originalImage == null) {
+      return;
+    }
+
+    final image = provider.originalImage!;
+
+    final scaleX = image.width / 200.0;
+    final scaleY = image.height / 200.0;
+
+    final x = (localPosition.dx * scaleX).round().clamp(0, image.width - 1);
+    final y = (localPosition.dy * scaleY).round().clamp(0, image.height - 1);
+
+    provider.editMaskAtPoint(x, y);
+  }
+
+  Color _getConfidenceColor(BuildContext context, double confidence) {
+    if (confidence >= 0.8) {
+      return Colors.green.shade100;
+    } else if (confidence >= 0.5) {
+      return Colors.orange.shade100;
+    } else {
+      return Colors.red.shade100;
+    }
+  }
+
   Future<void> _processAndNavigate(
     BuildContext context,
     ImageProcessingProvider provider,
@@ -1274,5 +1779,45 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
         ),
       );
     }
+  }
+}
+
+class CheckerboardPainter extends CustomPainter {
+  final Color color1;
+  final Color color2;
+  final double squareSize;
+
+  CheckerboardPainter({
+    required this.color1,
+    required this.color2,
+    required this.squareSize,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint1 = Paint()..color = color1;
+    final paint2 = Paint()..color = color2;
+
+    final rows = (size.height / squareSize).ceil();
+    final cols = (size.width / squareSize).ceil();
+
+    for (int row = 0; row < rows; row++) {
+      for (int col = 0; col < cols; col++) {
+        final rect = Rect.fromLTWH(
+          col * squareSize,
+          row * squareSize,
+          squareSize,
+          squareSize,
+        );
+        canvas.drawRect(rect, (row + col) % 2 == 0 ? paint1 : paint2);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CheckerboardPainter oldDelegate) {
+    return color1 != oldDelegate.color1 ||
+        color2 != oldDelegate.color2 ||
+        squareSize != oldDelegate.squareSize;
   }
 }

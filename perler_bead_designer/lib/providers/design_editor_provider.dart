@@ -1,9 +1,48 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/design_storage_service.dart';
 import '../services/settings_service.dart';
 
-enum ToolMode { draw, erase, fill }
+enum ToolMode { draw, erase, fill, select }
+
+class Selection {
+  final int startX;
+  final int startY;
+  final int endX;
+  final int endY;
+
+  Selection({
+    required this.startX,
+    required this.startY,
+    required this.endX,
+    required this.endY,
+  });
+
+  int get left => startX < endX ? startX : endX;
+  int get top => startY < endY ? startY : endY;
+  int get right => startX < endX ? endX : startX;
+  int get bottom => startY < endY ? endY : startY;
+  int get width => right - left + 1;
+  int get height => bottom - top + 1;
+
+  bool contains(int x, int y) {
+    return x >= left && x <= right && y >= top && y <= bottom;
+  }
+
+  Selection normalized() {
+    return Selection(startX: left, startY: top, endX: right, endY: bottom);
+  }
+
+  Selection shifted(int dx, int dy) {
+    return Selection(
+      startX: startX + dx,
+      startY: startY + dy,
+      endX: endX + dx,
+      endY: endY + dy,
+    );
+  }
+}
 
 class CanvasTransform {
   final double scale;
@@ -31,6 +70,9 @@ class CanvasTransform {
 }
 
 class ShortcutSettings {
+  final String undo;
+  final String redo;
+  final String save;
   final String moveUp;
   final String moveDown;
   final String moveLeft;
@@ -40,6 +82,9 @@ class ShortcutSettings {
   final String resetView;
 
   ShortcutSettings({
+    this.undo = 'Z',
+    this.redo = 'Y',
+    this.save = 'S',
     this.moveUp = 'W',
     this.moveDown = 'S',
     this.moveLeft = 'A',
@@ -51,6 +96,9 @@ class ShortcutSettings {
 
   factory ShortcutSettings.fromSettings(SettingsService settings) {
     return ShortcutSettings(
+      undo: settings.getStringSetting('shortcut_undo') ?? 'Z',
+      redo: settings.getStringSetting('shortcut_redo') ?? 'Y',
+      save: settings.getStringSetting('shortcut_save') ?? 'S',
       moveUp: settings.getStringSetting('shortcut_move_up') ?? 'W',
       moveDown: settings.getStringSetting('shortcut_move_down') ?? 'S',
       moveLeft: settings.getStringSetting('shortcut_move_left') ?? 'A',
@@ -62,6 +110,9 @@ class ShortcutSettings {
   }
 
   Future<void> saveToSettings(SettingsService settings) async {
+    await settings.setStringSetting('shortcut_undo', undo);
+    await settings.setStringSetting('shortcut_redo', redo);
+    await settings.setStringSetting('shortcut_save', save);
     await settings.setStringSetting('shortcut_move_up', moveUp);
     await settings.setStringSetting('shortcut_move_down', moveDown);
     await settings.setStringSetting('shortcut_move_left', moveLeft);
@@ -73,6 +124,9 @@ class ShortcutSettings {
 
   Map<String, String> toJson() {
     return {
+      'undo': undo,
+      'redo': redo,
+      'save': save,
       'moveUp': moveUp,
       'moveDown': moveDown,
       'moveLeft': moveLeft,
@@ -80,6 +134,21 @@ class ShortcutSettings {
       'zoomIn': zoomIn,
       'zoomOut': zoomOut,
       'resetView': resetView,
+    };
+  }
+
+  static Map<String, String> getDefaults() {
+    return {
+      'undo': 'Z',
+      'redo': 'Y',
+      'save': 'S',
+      'moveUp': 'W',
+      'moveDown': 'S',
+      'moveLeft': 'A',
+      'moveRight': 'D',
+      'zoomIn': 'Q',
+      'zoomOut': 'E',
+      'resetView': 'R',
     };
   }
 }
@@ -105,7 +174,7 @@ class DesignEditorProvider extends ChangeNotifier {
 
   final List<EditorHistory> _undoStack = [];
   final List<EditorHistory> _redoStack = [];
-  static const int _maxHistorySize = 50;
+  int _maxHistorySize = 50;
 
   final DesignStorageService _storageService = DesignStorageService();
 
@@ -125,6 +194,18 @@ class DesignEditorProvider extends ChangeNotifier {
   BeadDesign? _batchStartDesign;
   bool _isPreviewMode = false;
 
+  Timer? _autoSaveTimer;
+  int _autoSaveInterval = 30;
+  DateTime? _lastAutoSaveTime;
+  bool _isAutoSaving = false;
+
+  Selection? _currentSelection;
+  BeadDesign? _clipboard;
+  bool _isSelecting = false;
+  bool _isDraggingSelection = false;
+  int _selectionDragStartX = 0;
+  int _selectionDragStartY = 0;
+
   bool get isBatchDrawing => _isBatchDrawing;
 
   BeadDesign? get currentDesign => _currentDesign;
@@ -139,6 +220,8 @@ class DesignEditorProvider extends ChangeNotifier {
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
   List<BeadColor> get recentColors => List.unmodifiable(_recentColors);
+  List<EditorHistory> get undoStack => List.unmodifiable(_undoStack);
+  List<EditorHistory> get redoStack => List.unmodifiable(_redoStack);
 
   bool get hasDesign => _currentDesign != null;
   int get width => _currentDesign?.width ?? 0;
@@ -149,9 +232,37 @@ class DesignEditorProvider extends ChangeNotifier {
   CanvasTransform get canvasTransform => _canvasTransform;
   ShortcutSettings get shortcutSettings => _shortcutSettings;
 
+  int get autoSaveInterval => _autoSaveInterval;
+  DateTime? get lastAutoSaveTime => _lastAutoSaveTime;
+  bool get isAutoSaving => _isAutoSaving;
+  int get maxHistorySize => _maxHistorySize;
+
+  Selection? get currentSelection => _currentSelection;
+  BeadDesign? get clipboard => _clipboard;
+  bool get isSelecting => _isSelecting;
+  bool get isDraggingSelection => _isDraggingSelection;
+  bool get hasSelection => _currentSelection != null;
+  bool get hasClipboard => _clipboard != null;
+
   void loadShortcutSettings(SettingsService settings) {
     _shortcutSettings = ShortcutSettings.fromSettings(settings);
     notifyListeners();
+  }
+
+  void loadEditorSettings(SettingsService settings) {
+    _autoSaveInterval = settings.getAutoSaveInterval();
+    _maxHistorySize = settings.getMaxHistorySize();
+    _trimHistoryStacks();
+    notifyListeners();
+  }
+
+  void _trimHistoryStacks() {
+    while (_undoStack.length > _maxHistorySize) {
+      _undoStack.removeAt(0);
+    }
+    while (_redoStack.length > _maxHistorySize) {
+      _redoStack.removeAt(0);
+    }
   }
 
   Future<void> updateShortcutSettings(ShortcutSettings settings) async {
@@ -173,10 +284,11 @@ class DesignEditorProvider extends ChangeNotifier {
   }
 
   void zoomCanvas(double delta, {Offset? focalPoint}) {
-    final newScale = (_canvasTransform.scale + delta).clamp(minScale, maxScale);
+    final currentScale = _canvasTransform.scale.clamp(minScale, maxScale);
+    final newScale = (currentScale + delta).clamp(minScale, maxScale);
 
-    if (focalPoint != null && newScale != _canvasTransform.scale) {
-      final scaleRatio = newScale / _canvasTransform.scale;
+    if (focalPoint != null && newScale != currentScale && currentScale > 0) {
+      final scaleRatio = newScale / currentScale;
       final newOffset = Offset(
         focalPoint.dx -
             (focalPoint.dx - _canvasTransform.offset.dx) * scaleRatio,
@@ -230,31 +342,51 @@ class DesignEditorProvider extends ChangeNotifier {
     _redoStack.clear();
     _isDirty = false;
     _hasEverBeenSaved = false;
+    _canvasTransform = CanvasTransform();
     notifyListeners();
   }
 
   Future<bool> loadDesign(String id) async {
-    final design = await _storageService.loadDesign(id);
-    if (design != null) {
+    try {
+      if (id.isEmpty) return false;
+
+      final design = await _storageService.loadDesign(id);
+      if (design != null) {
+        _currentDesign = design;
+        _undoStack.clear();
+        _redoStack.clear();
+        _isDirty = false;
+        _hasEverBeenSaved = true;
+        _canvasTransform = CanvasTransform();
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('加载设计失败: $e');
+      return false;
+    }
+  }
+
+  Future<bool> loadDesignDirect(BeadDesign design) async {
+    try {
+      if (design.width <= 0 || design.height <= 0) {
+        debugPrint('无效的设计尺寸');
+        return false;
+      }
+
       _currentDesign = design;
       _undoStack.clear();
       _redoStack.clear();
       _isDirty = false;
       _hasEverBeenSaved = true;
+      _canvasTransform = CanvasTransform();
       notifyListeners();
       return true;
+    } catch (e) {
+      debugPrint('加载设计失败: $e');
+      return false;
     }
-    return false;
-  }
-
-  Future<bool> loadDesignDirect(BeadDesign design) async {
-    _currentDesign = design;
-    _undoStack.clear();
-    _redoStack.clear();
-    _isDirty = false;
-    _hasEverBeenSaved = true;
-    notifyListeners();
-    return true;
   }
 
   Future<bool> saveDesign() async {
@@ -372,6 +504,8 @@ class DesignEditorProvider extends ChangeNotifier {
         break;
       case ToolMode.fill:
         _handleFillTool(x, y, currentBead);
+        break;
+      case ToolMode.select:
         break;
     }
   }
@@ -504,6 +638,35 @@ class DesignEditorProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void jumpToHistoryState(int undoIndex) {
+    if (_currentDesign == null) return;
+    if (undoIndex < 0 || undoIndex >= _undoStack.length) return;
+
+    while (_undoStack.length > undoIndex + 1) {
+      _redoStack.add(EditorHistory(design: _currentDesign!));
+      _currentDesign = _undoStack.removeLast().design;
+    }
+
+    _redoStack.add(EditorHistory(design: _currentDesign!));
+    _currentDesign = _undoStack.removeLast().design;
+    _isDirty = true;
+    notifyListeners();
+  }
+
+  void jumpToRedoState(int redoIndex) {
+    if (_currentDesign == null) return;
+    if (redoIndex < 0 || redoIndex >= _redoStack.length) return;
+
+    final stepsToRedo = _redoStack.length - redoIndex;
+    for (var i = 0; i < stepsToRedo; i++) {
+      _undoStack.add(EditorHistory(design: _currentDesign!));
+      _currentDesign = _redoStack.removeLast().design;
+    }
+
+    _isDirty = true;
+    notifyListeners();
+  }
+
   void resizeDesign(int newWidth, int newHeight) {
     if (_currentDesign == null) return;
     if (newWidth <= 0 || newHeight <= 0) return;
@@ -583,13 +746,299 @@ class DesignEditorProvider extends ChangeNotifier {
     return '可重做 ${_redoStack.length} 步';
   }
 
+  void startAutoSaveTimer() {
+    stopAutoSaveTimer();
+    if (_autoSaveInterval <= 0) return;
+
+    _autoSaveTimer = Timer.periodic(
+      Duration(seconds: _autoSaveInterval),
+      (_) => _performAutoSave(),
+    );
+  }
+
+  void stopAutoSaveTimer() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = null;
+  }
+
+  void setAutoSaveInterval(int seconds) {
+    if (seconds < 0) return;
+    _autoSaveInterval = seconds;
+    if (_autoSaveTimer != null) {
+      startAutoSaveTimer();
+    }
+    notifyListeners();
+  }
+
+  void setMaxHistorySize(int size) {
+    if (size < 1) return;
+    _maxHistorySize = size;
+    _trimHistoryStacks();
+    notifyListeners();
+  }
+
+  Future<void> _performAutoSave() async {
+    if (_currentDesign == null || !_isDirty || _isAutoSaving) return;
+
+    _isAutoSaving = true;
+    notifyListeners();
+
+    try {
+      final success = await saveDesign();
+      if (success) {
+        _lastAutoSaveTime = DateTime.now();
+        debugPrint('自动保存成功: $_lastAutoSaveTime');
+      }
+    } catch (e) {
+      debugPrint('自动保存失败: $e');
+    } finally {
+      _isAutoSaving = false;
+      notifyListeners();
+    }
+  }
+
+  String getAutoSaveStatusText() {
+    if (_isAutoSaving) return '正在保存...';
+    if (_lastAutoSaveTime != null) {
+      final now = DateTime.now();
+      final difference = now.difference(_lastAutoSaveTime!);
+
+      if (difference.inSeconds < 60) {
+        return '刚刚自动保存';
+      } else if (difference.inMinutes < 60) {
+        return '${difference.inMinutes}分钟前自动保存';
+      } else {
+        return '${difference.inHours}小时前自动保存';
+      }
+    }
+    return '尚未自动保存';
+  }
+
+  void flipHorizontal() {
+    if (_currentDesign == null) return;
+
+    _pushToUndoStack(description: '水平镜像');
+    _currentDesign = _currentDesign!.flipHorizontal();
+    _isDirty = true;
+    notifyListeners();
+  }
+
+  void flipVertical() {
+    if (_currentDesign == null) return;
+
+    _pushToUndoStack(description: '垂直镜像');
+    _currentDesign = _currentDesign!.flipVertical();
+    _isDirty = true;
+    notifyListeners();
+  }
+
+  void rotateClockwise() {
+    if (_currentDesign == null) return;
+
+    _pushToUndoStack(description: '顺时针旋转90°');
+    _currentDesign = _currentDesign!.rotateClockwise();
+    _isDirty = true;
+    notifyListeners();
+  }
+
+  void rotateCounterClockwise() {
+    if (_currentDesign == null) return;
+
+    _pushToUndoStack(description: '逆时针旋转90°');
+    _currentDesign = _currentDesign!.rotateCounterClockwise();
+    _isDirty = true;
+    notifyListeners();
+  }
+
+  void rotate180() {
+    if (_currentDesign == null) return;
+
+    _pushToUndoStack(description: '旋转180°');
+    _currentDesign = _currentDesign!.rotate180();
+    _isDirty = true;
+    notifyListeners();
+  }
+
+  void startSelection(int x, int y) {
+    _currentSelection = Selection(startX: x, startY: y, endX: x, endY: y);
+    _isSelecting = true;
+    notifyListeners();
+  }
+
+  void updateSelection(int x, int y) {
+    if (!_isSelecting || _currentSelection == null) return;
+
+    _currentSelection = Selection(
+      startX: _currentSelection!.startX,
+      startY: _currentSelection!.startY,
+      endX: x,
+      endY: y,
+    );
+    notifyListeners();
+  }
+
+  void endSelection() {
+    _isSelecting = false;
+    if (_currentSelection != null &&
+        _currentSelection!.width < 2 &&
+        _currentSelection!.height < 2) {
+      _currentSelection = null;
+    }
+    notifyListeners();
+  }
+
+  void clearSelection() {
+    _currentSelection = null;
+    _isSelecting = false;
+    _isDraggingSelection = false;
+    notifyListeners();
+  }
+
+  void selectAll() {
+    if (_currentDesign == null) return;
+
+    _currentSelection = Selection(
+      startX: 0,
+      startY: 0,
+      endX: _currentDesign!.width - 1,
+      endY: _currentDesign!.height - 1,
+    );
+    notifyListeners();
+  }
+
+  void copySelection() {
+    if (_currentDesign == null || _currentSelection == null) return;
+
+    final normalized = _currentSelection!.normalized();
+    _clipboard = _currentDesign!.getSubRegion(
+      normalized.left,
+      normalized.top,
+      normalized.right,
+      normalized.bottom,
+    );
+    notifyListeners();
+  }
+
+  void copyAll() {
+    if (_currentDesign == null) return;
+    _clipboard = _currentDesign!;
+    notifyListeners();
+  }
+
+  void pasteSelection(int targetX, int targetY) {
+    if (_currentDesign == null || _clipboard == null) return;
+
+    _pushToUndoStack(description: '粘贴');
+    _currentDesign = _currentDesign!.pasteRegion(_clipboard!, targetX, targetY);
+    _isDirty = true;
+    notifyListeners();
+  }
+
+  void pasteToCenter() {
+    if (_currentDesign == null || _clipboard == null) return;
+
+    final targetX = (_currentDesign!.width - _clipboard!.width) ~/ 2;
+    final targetY = (_currentDesign!.height - _clipboard!.height) ~/ 2;
+
+    pasteSelection(targetX, targetY);
+  }
+
+  void startDraggingSelection(int x, int y) {
+    if (_currentSelection == null) return;
+
+    _isDraggingSelection = true;
+    _selectionDragStartX = x;
+    _selectionDragStartY = y;
+    notifyListeners();
+  }
+
+  void dragSelection(int x, int y) {
+    if (!_isDraggingSelection || _currentSelection == null) return;
+
+    final dx = x - _selectionDragStartX;
+    final dy = y - _selectionDragStartY;
+
+    if (dx != 0 || dy != 0) {
+      _currentSelection = _currentSelection!.shifted(dx, dy);
+      _selectionDragStartX = x;
+      _selectionDragStartY = y;
+      notifyListeners();
+    }
+  }
+
+  void endDraggingSelection() {
+    _isDraggingSelection = false;
+    notifyListeners();
+  }
+
+  void deleteSelection() {
+    if (_currentDesign == null || _currentSelection == null) return;
+
+    _pushToUndoStack(description: '删除选区');
+
+    final normalized = _currentSelection!.normalized();
+    var newDesign = _currentDesign!;
+
+    for (int y = normalized.top; y <= normalized.bottom; y++) {
+      for (int x = normalized.left; x <= normalized.right; x++) {
+        if (newDesign.isValidPosition(x, y)) {
+          newDesign = newDesign.clearBead(x, y);
+        }
+      }
+    }
+
+    _currentDesign = newDesign;
+    _isDirty = true;
+    _currentSelection = null;
+    notifyListeners();
+  }
+
+  void moveSelectionContent(int dx, int dy) {
+    if (_currentDesign == null || _currentSelection == null) return;
+
+    _pushToUndoStack(description: '移动选区内容');
+
+    final normalized = _currentSelection!.normalized();
+    final region = _currentDesign!.getSubRegion(
+      normalized.left,
+      normalized.top,
+      normalized.right,
+      normalized.bottom,
+    );
+
+    var newDesign = _currentDesign!;
+    for (int y = normalized.top; y <= normalized.bottom; y++) {
+      for (int x = normalized.left; x <= normalized.right; x++) {
+        if (newDesign.isValidPosition(x, y)) {
+          newDesign = newDesign.clearBead(x, y);
+        }
+      }
+    }
+
+    final newTargetX = normalized.left + dx;
+    final newTargetY = normalized.top + dy;
+    newDesign = newDesign.pasteRegion(region, newTargetX, newTargetY);
+
+    _currentDesign = newDesign;
+    _currentSelection = Selection(
+      startX: newTargetX,
+      startY: newTargetY,
+      endX: newTargetX + normalized.width - 1,
+      endY: newTargetY + normalized.height - 1,
+    );
+    _isDirty = true;
+    notifyListeners();
+  }
+
   void reset() {
+    stopAutoSaveTimer();
     _currentDesign = null;
     _selectedColor = null;
     _toolMode = ToolMode.draw;
     _undoStack.clear();
     _redoStack.clear();
     _isDirty = false;
+    _lastAutoSaveTime = null;
     notifyListeners();
   }
 }

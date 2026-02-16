@@ -12,6 +12,26 @@ import '../widgets/export_dialog.dart';
 import 'design_editor_screen.dart';
 import 'image_import_screen.dart';
 
+enum DesignSortType {
+  updatedAt('修改时间', Icons.update),
+  createdAt('创建时间', Icons.schedule),
+  name('名称', Icons.sort_by_alpha),
+  size('尺寸', Icons.grid_on),
+  beadCount('拼豆数', Icons.grain);
+
+  final String label;
+  final IconData icon;
+  const DesignSortType(this.label, this.icon);
+}
+
+enum SortOrder {
+  ascending('升序'),
+  descending('降序');
+
+  final String label;
+  const SortOrder(this.label);
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -21,8 +41,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final DesignStorageService _designStorageService = DesignStorageService();
+  List<BeadDesign> _allDesigns = [];
   List<BeadDesign> _recentDesigns = [];
   bool _isLoading = true;
+  DesignSortType _sortType = DesignSortType.updatedAt;
+  SortOrder _sortOrder = SortOrder.descending;
+  bool _showAllDesigns = false;
 
   @override
   void initState() {
@@ -37,7 +61,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final designs = await _designStorageService.loadAllDesigns();
       if (mounted) {
         setState(() {
-          _recentDesigns = designs.take(5).toList();
+          _allDesigns = designs;
+          _applySort();
+          _recentDesigns = _allDesigns.take(5).toList();
           _isLoading = false;
         });
       }
@@ -46,6 +72,39 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _applySort() {
+    _allDesigns.sort((a, b) {
+      int result;
+      switch (_sortType) {
+        case DesignSortType.updatedAt:
+          result = b.updatedAt.compareTo(a.updatedAt);
+          break;
+        case DesignSortType.createdAt:
+          result = b.createdAt.compareTo(a.createdAt);
+          break;
+        case DesignSortType.name:
+          result = a.name.compareTo(b.name);
+          break;
+        case DesignSortType.size:
+          result = (b.width * b.height).compareTo(a.width * a.height);
+          break;
+        case DesignSortType.beadCount:
+          result = b.getTotalBeadCount().compareTo(a.getTotalBeadCount());
+          break;
+      }
+      return _sortOrder == SortOrder.ascending ? -result : result;
+    });
+    _recentDesigns = _allDesigns.take(5).toList();
+  }
+
+  void _changeSort(DesignSortType type, SortOrder order) {
+    setState(() {
+      _sortType = type;
+      _sortOrder = order;
+      _applySort();
+    });
   }
 
   void _navigateToInventory() {
@@ -154,6 +213,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _toggleShowAllDesigns() {
+    setState(() {
+      _showAllDesigns = !_showAllDesigns;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorPaletteProvider = context.watch<ColorPaletteProvider>();
@@ -235,6 +300,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildQuickActions(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrowScreen = screenWidth < 900;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,10 +313,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: SlideInWidget(
+        if (isNarrowScreen)
+          Column(
+            children: [
+              SlideInWidget(
                 delay: const Duration(milliseconds: 100),
                 child: _ActionCard(
                   icon: Icons.add,
@@ -259,10 +326,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: _createNewDesign,
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: SlideInWidget(
+              const SizedBox(height: 12),
+              SlideInWidget(
                 delay: const Duration(milliseconds: 200),
                 child: _ActionCard(
                   icon: Icons.image,
@@ -272,10 +337,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: _importImage,
                 ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: SlideInWidget(
+              const SizedBox(height: 12),
+              SlideInWidget(
                 delay: const Duration(milliseconds: 300),
                 child: _ActionCard(
                   icon: Icons.inventory_2,
@@ -285,36 +348,115 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: _navigateToInventory,
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: SlideInWidget(
+                  delay: const Duration(milliseconds: 100),
+                  child: _ActionCard(
+                    icon: Icons.add,
+                    title: '新建设计',
+                    subtitle: '创建空白设计画布',
+                    color: colorScheme.primary,
+                    onTap: _createNewDesign,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: SlideInWidget(
+                  delay: const Duration(milliseconds: 200),
+                  child: _ActionCard(
+                    icon: Icons.image,
+                    title: '导入图片',
+                    subtitle: '从图片生成设计',
+                    color: colorScheme.secondary,
+                    onTap: _importImage,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: SlideInWidget(
+                  delay: const Duration(milliseconds: 300),
+                  child: _ActionCard(
+                    icon: Icons.inventory_2,
+                    title: '库存管理',
+                    subtitle: '管理拼豆库存',
+                    color: colorScheme.tertiary,
+                    onTap: _navigateToInventory,
+                  ),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }
 
   Widget _buildRecentDesigns(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final designsToShow = _showAllDesigns ? _allDesigns : _recentDesigns;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '最近的设计',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            Row(
+              children: [
+                Text(
+                  _showAllDesigns ? '全部设计' : '最近的设计',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                if (_allDesigns.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${_allDesigns.length}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            if (_recentDesigns.isNotEmpty)
-              TextButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.arrow_forward),
-                label: const Text('查看全部'),
-              ),
+            Row(
+              children: [
+                if (_allDesigns.isNotEmpty) ...[
+                  _buildSortButton(context),
+                  const SizedBox(width: 8),
+                ],
+                if (_allDesigns.length > 5)
+                  TextButton.icon(
+                    onPressed: _toggleShowAllDesigns,
+                    icon: Icon(
+                      _showAllDesigns ? Icons.unfold_less : Icons.unfold_more,
+                    ),
+                    label: Text(_showAllDesigns ? '收起' : '查看全部'),
+                  ),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 16),
-        if (_recentDesigns.isEmpty)
+        if (_allDesigns.isEmpty)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(32),
@@ -346,25 +488,126 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           )
         else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _recentDesigns.length,
-            itemBuilder: (context, index) {
-              final design = _recentDesigns[index];
-              return DesignListTile(
-                design: design,
-                index: index,
-                onTap: () => _openDesignEditor(design),
-                onDelete: () async {
-                  await _designStorageService.deleteDesign(design.id);
-                  await _loadData();
-                },
-                onExport: () => _exportDesign(design),
-                onRename: () => _renameDesign(design),
-              );
-            },
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: ListView.builder(
+              key: ValueKey('designs_$_showAllDesigns-$_sortType-$_sortOrder'),
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: designsToShow.length,
+              itemBuilder: (context, index) {
+                final design = designsToShow[index];
+                return DesignListTile(
+                  design: design,
+                  index: index,
+                  onTap: () => _openDesignEditor(design),
+                  onDelete: () async {
+                    await _designStorageService.deleteDesign(design.id);
+                    await _loadData();
+                  },
+                  onExport: () => _exportDesign(design),
+                  onRename: () => _renameDesign(design),
+                );
+              },
+            ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildSortButton(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return PopupMenuButton<void>(
+      tooltip: '排序选项',
+      icon: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_sortType.icon, size: 18),
+          const SizedBox(width: 4),
+          Text(_sortType.label, style: Theme.of(context).textTheme.labelMedium),
+          Icon(
+            _sortOrder == SortOrder.ascending
+                ? Icons.arrow_upward
+                : Icons.arrow_downward,
+            size: 14,
+          ),
+        ],
+      ),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          enabled: false,
+          child: Text(
+            '排序方式',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colorScheme.outline,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        ...DesignSortType.values.map(
+          (type) => PopupMenuItem(
+            onTap: () => _changeSort(type, _sortOrder),
+            child: Row(
+              children: [
+                Icon(
+                  type.icon,
+                  size: 18,
+                  color: _sortType == type ? colorScheme.primary : null,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  type.label,
+                  style: TextStyle(
+                    color: _sortType == type ? colorScheme.primary : null,
+                    fontWeight: _sortType == type ? FontWeight.bold : null,
+                  ),
+                ),
+                const Spacer(),
+                if (_sortType == type)
+                  Icon(Icons.check, size: 18, color: colorScheme.primary),
+              ],
+            ),
+          ),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          enabled: false,
+          child: Text(
+            '排序顺序',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colorScheme.outline,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        ...SortOrder.values.map(
+          (order) => PopupMenuItem(
+            onTap: () => _changeSort(_sortType, order),
+            child: Row(
+              children: [
+                Icon(
+                  order == SortOrder.ascending
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+                  size: 18,
+                  color: _sortOrder == order ? colorScheme.primary : null,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  order.label,
+                  style: TextStyle(
+                    color: _sortOrder == order ? colorScheme.primary : null,
+                    fontWeight: _sortOrder == order ? FontWeight.bold : null,
+                  ),
+                ),
+                const Spacer(),
+                if (_sortOrder == order)
+                  Icon(Icons.check, size: 18, color: colorScheme.primary),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -375,6 +618,8 @@ class _HomeScreenState extends State<HomeScreen> {
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final inventoryProvider = context.watch<InventoryProvider>();
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrowScreen = screenWidth < 900;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -396,90 +641,186 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.palette, color: colorScheme.primary),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${colorPaletteProvider.totalColorCount}',
-                        style: Theme.of(context).textTheme.headlineMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '可用颜色',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+        if (isNarrowScreen)
+          Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.palette, color: colorScheme.primary),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${colorPaletteProvider.totalColorCount}',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '可用颜色',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.inventory_2, color: colorScheme.secondary),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${inventoryProvider.colorCount}',
-                        style: Theme.of(context).textTheme.headlineMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '库存颜色',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.inventory_2,
+                              color: colorScheme.secondary,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${inventoryProvider.colorCount}',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '库存颜色',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Card(
+              const SizedBox(height: 12),
+              Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
                     children: [
                       Icon(Icons.warning_amber, color: colorScheme.tertiary),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${inventoryProvider.lowStockItems.length}',
-                        style: Theme.of(context).textTheme.headlineMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '库存不足',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${inventoryProvider.lowStockItems.length}',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              '库存不足',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.palette, color: colorScheme.primary),
+                        const SizedBox(height: 12),
+                        Text(
+                          '${colorPaletteProvider.totalColorCount}',
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '可用颜色',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.inventory_2, color: colorScheme.secondary),
+                        const SizedBox(height: 12),
+                        Text(
+                          '${inventoryProvider.colorCount}',
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '库存颜色',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.warning_amber, color: colorScheme.tertiary),
+                        const SizedBox(height: 12),
+                        Text(
+                          '${inventoryProvider.lowStockItems.length}',
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '库存不足',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }

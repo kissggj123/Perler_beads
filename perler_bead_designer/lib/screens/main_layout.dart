@@ -1,17 +1,93 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../main.dart';
 import '../models/bead_color.dart';
 import '../providers/app_provider.dart';
 import '../providers/color_palette_provider.dart';
+import '../services/version_check_service.dart';
+import '../services/update_service.dart';
 import '../utils/animations.dart';
-import '../widgets/app_drawer.dart';
+import '../widgets/update_dialog.dart';
 import 'home_screen.dart';
 import 'inventory_screen.dart';
 import 'settings_screen.dart';
 
-class MainLayout extends StatelessWidget {
+class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
+
+  @override
+  State<MainLayout> createState() => _MainLayoutState();
+}
+
+class _MainLayoutState extends State<MainLayout> with WidgetsBindingObserver {
+  double _lastWidth = 0;
+  bool _hasCheckedUpdate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForUpdates();
+    });
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (_hasCheckedUpdate) return;
+    _hasCheckedUpdate = true;
+
+    final versionCheckService = VersionCheckService();
+
+    if (!versionCheckService.shouldAutoCheck() ||
+        !versionCheckService.shouldCheckOnStartup()) {
+      return;
+    }
+
+    final result = await versionCheckService.checkForUpdate();
+
+    if (result.hasUpdate &&
+        !result.isSkipped &&
+        result.releaseInfo != null &&
+        mounted) {
+      _showUpdateDialog(result.releaseInfo!);
+    }
+  }
+
+  void _showUpdateDialog(ReleaseInfo releaseInfo) {
+    showDialog(
+      context: context,
+      builder: (context) => UpdateDialog(releaseInfo: releaseInfo),
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateSidebarState();
+    });
+  }
+
+  void _updateSidebarState() {
+    if (!mounted) return;
+    final appProvider = context.read<AppProvider>();
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    if (screenWidth != _lastWidth) {
+      _lastWidth = screenWidth;
+      appProvider.updateSidebarForWidth(
+        screenWidth,
+        collapseThreshold: kSidebarAutoCollapseWidth,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +95,10 @@ class MainLayout extends StatelessWidget {
     final currentIndex = appProvider.currentPageIndex;
     final colorScheme = Theme.of(context).colorScheme;
     final screenWidth = MediaQuery.of(context).size.width;
-    final isWideScreen = screenWidth >= 800;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateSidebarState();
+    });
 
     final pages = <Widget>[
       const HomeScreen(),
@@ -28,35 +107,32 @@ class MainLayout extends StatelessWidget {
       const SettingsScreen(),
     ];
 
-    if (isWideScreen) {
-      return Scaffold(
-        body: Row(
-          children: [
-            _buildNavigationRail(context, appProvider, currentIndex),
-            VerticalDivider(
-              thickness: 1,
-              width: 1,
-              color: colorScheme.outlineVariant,
-            ),
-            Expanded(
-              child: _AnimatedPageSwitcher(
-                currentIndex: currentIndex,
-                pages: pages,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_getPageTitle(currentIndex)),
-        backgroundColor: colorScheme.surface,
-        surfaceTintColor: colorScheme.surfaceTint,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return Row(
+            children: [
+              _buildNavigationRail(
+                context,
+                appProvider,
+                currentIndex,
+                screenWidth,
+              ),
+              VerticalDivider(
+                thickness: 1,
+                width: 1,
+                color: colorScheme.outlineVariant,
+              ),
+              Expanded(
+                child: _AnimatedPageSwitcher(
+                  currentIndex: currentIndex,
+                  pages: pages,
+                ),
+              ),
+            ],
+          );
+        },
       ),
-      drawer: const AppDrawer(),
-      body: _AnimatedPageSwitcher(currentIndex: currentIndex, pages: pages),
     );
   }
 
@@ -64,27 +140,36 @@ class MainLayout extends StatelessWidget {
     BuildContext context,
     AppProvider appProvider,
     int currentIndex,
+    double screenWidth,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final isExpanded = appProvider.sidebarExpanded;
+    final canToggle = screenWidth >= kSidebarAutoCollapseWidth;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      width: isExpanded ? 200 : 72,
+      width: isExpanded ? kSidebarExpandedWidth : kSidebarCollapsedWidth,
       child: NavigationRail(
         extended: isExpanded,
-        minExtendedWidth: 200,
+        minExtendedWidth: kSidebarExpandedWidth,
         leading: Column(
           children: [
             const SizedBox(height: 16),
             IconButton(
-              onPressed: appProvider.toggleSidebar,
+              onPressed: () {
+                if (canToggle) {
+                  appProvider.toggleSidebar();
+                }
+              },
               icon: Icon(
                 isExpanded ? Icons.menu_open : Icons.menu,
-                color: colorScheme.onSurface,
+                color: canToggle ? colorScheme.onSurface : colorScheme.outline,
               ),
-              tooltip: isExpanded ? '收起侧边栏' : '展开侧边栏',
+              tooltip: canToggle
+                  ? (isExpanded ? '收起侧边栏' : '展开侧边栏')
+                  : '窗口过窄，无法展开',
             ),
+            const SizedBox(height: 8),
           ],
         ),
         selectedIndex: currentIndex,
@@ -103,15 +188,6 @@ class MainLayout extends StatelessWidget {
         }).toList(),
       ),
     );
-  }
-
-  String _getPageTitle(int index) {
-    return AppPage.values
-        .firstWhere(
-          (page) => page.pageIndex == index,
-          orElse: () => AppPage.home,
-        )
-        .label;
   }
 }
 
@@ -275,6 +351,9 @@ class _ColorPaletteScreenState extends State<_ColorPaletteScreen> {
     ColorPaletteProvider provider,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrowScreen = screenWidth < 1000;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -283,63 +362,125 @@ class _ColorPaletteScreenState extends State<_ColorPaletteScreen> {
           bottom: BorderSide(color: colorScheme.outlineVariant, width: 0.5),
         ),
       ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: '搜索颜色名称、代码...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              provider.setSearchQuery('');
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+      child: isNarrowScreen
+          ? Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: '搜索颜色名称、代码...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    provider.setSearchQuery('');
+                                  },
+                                )
+                              : null,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                          ),
+                          filled: true,
+                          fillColor: colorScheme.surface,
+                        ),
+                        onChanged: (value) {
+                          provider.setSearchQuery(value);
+                          setState(() {});
+                        },
+                      ),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    filled: true,
-                    fillColor: colorScheme.surface,
-                  ),
-                  onChanged: (value) {
-                    provider.setSearchQuery(value);
-                    setState(() {});
-                  },
+                    if (provider.searchQuery.isNotEmpty ||
+                        provider.selectedCategory != null ||
+                        provider.selectedBrand != null) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          provider.clearFilters();
+                        },
+                        icon: const Icon(Icons.filter_alt_off),
+                        tooltip: '清除筛选',
+                        style: IconButton.styleFrom(
+                          backgroundColor: colorScheme.errorContainer,
+                          foregroundColor: colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              _buildCategoryFilter(context, provider),
-              const SizedBox(width: 8),
-              _buildBrandFilter(context, provider),
-              if (provider.searchQuery.isNotEmpty ||
-                  provider.selectedCategory != null ||
-                  provider.selectedBrand != null) ...[
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: () {
-                    _searchController.clear();
-                    provider.clearFilters();
-                  },
-                  icon: const Icon(Icons.filter_alt_off),
-                  tooltip: '清除筛选',
-                  style: IconButton.styleFrom(
-                    backgroundColor: colorScheme.errorContainer,
-                    foregroundColor: colorScheme.onErrorContainer,
-                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: _buildCategoryFilter(context, provider)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildBrandFilter(context, provider)),
+                  ],
                 ),
               ],
-            ],
-          ),
-        ],
-      ),
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: '搜索颜色名称、代码...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                provider.setSearchQuery('');
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                      ),
+                      filled: true,
+                      fillColor: colorScheme.surface,
+                    ),
+                    onChanged: (value) {
+                      provider.setSearchQuery(value);
+                      setState(() {});
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _buildCategoryFilter(context, provider),
+                const SizedBox(width: 8),
+                _buildBrandFilter(context, provider),
+                if (provider.searchQuery.isNotEmpty ||
+                    provider.selectedCategory != null ||
+                    provider.selectedBrand != null) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () {
+                      _searchController.clear();
+                      provider.clearFilters();
+                    },
+                    icon: const Icon(Icons.filter_alt_off),
+                    tooltip: '清除筛选',
+                    style: IconButton.styleFrom(
+                      backgroundColor: colorScheme.errorContainer,
+                      foregroundColor: colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ],
+              ],
+            ),
     );
   }
 

@@ -1955,3 +1955,1189 @@ class _IsolateData {
     required this.maxDimension,
   });
 }
+
+enum BackgroundRemovalMode {
+  auto,
+  edgeFloodFill,
+  colorBased,
+  cannyEdge,
+  regionGrowing,
+  manual,
+}
+
+enum MaskEditTool { brush, eraser, magicWand, lasso, edgeRefinement }
+
+class BackgroundRemovalResult {
+  final img.Image image;
+  final List<List<bool>> mask;
+  final double confidence;
+  final String? description;
+
+  BackgroundRemovalResult({
+    required this.image,
+    required this.mask,
+    this.confidence = 1.0,
+    this.description,
+  });
+}
+
+class BackgroundRemovalService {
+  static const int _maxProcessingSize = 1024;
+  static const double _cannyLowThreshold = 50.0;
+  static const double _cannyHighThreshold = 150.0;
+
+  Future<BackgroundRemovalResult?> removeBackground(
+    img.Image image, {
+    BackgroundRemovalMode mode = BackgroundRemovalMode.auto,
+    double tolerance = 30.0,
+    int edgeMargin = 5,
+    List<List<bool>>? existingMask,
+  }) async {
+    try {
+      final processImage = _prepareForProcessing(image);
+      List<List<bool>> mask;
+      String? description;
+
+      switch (mode) {
+        case BackgroundRemovalMode.auto:
+          final result = await _autoDetectBackgroundAdvanced(
+            processImage,
+            tolerance,
+            edgeMargin,
+          );
+          mask = result.$1;
+          description = result.$2;
+          break;
+        case BackgroundRemovalMode.edgeFloodFill:
+          mask = await _edgeFloodFillBackground(
+            processImage,
+            tolerance,
+            edgeMargin,
+          );
+          description = '边缘填充模式';
+          break;
+        case BackgroundRemovalMode.colorBased:
+          mask = await _colorBasedRemoval(processImage, tolerance);
+          description = '颜色识别模式';
+          break;
+        case BackgroundRemovalMode.cannyEdge:
+          mask = await _cannyEdgeDetection(processImage, tolerance);
+          description = 'Canny边缘检测模式';
+          break;
+        case BackgroundRemovalMode.regionGrowing:
+          mask = await _regionGrowingRemoval(processImage, tolerance);
+          description = '区域生长模式';
+          break;
+        case BackgroundRemovalMode.manual:
+          mask =
+              existingMask ??
+              _createEmptyMask(processImage.width, processImage.height);
+          description = '手动模式';
+          break;
+      }
+
+      mask = _smoothMaskAdvanced(mask);
+      mask = _featherEdges(mask, 2);
+
+      if (image.width != processImage.width ||
+          image.height != processImage.height) {
+        mask = _resizeMask(mask, image.width, image.height);
+      }
+
+      final result = _applyMask(image, mask);
+      final confidence = _calculateMaskConfidence(mask);
+
+      return BackgroundRemovalResult(
+        image: result,
+        mask: mask,
+        confidence: confidence,
+        description: description,
+      );
+    } catch (e) {
+      debugPrint('Background removal failed: $e');
+      return null;
+    }
+  }
+
+  img.Image _prepareForProcessing(img.Image image) {
+    if (image.width <= _maxProcessingSize &&
+        image.height <= _maxProcessingSize) {
+      return image;
+    }
+
+    final aspectRatio = image.width / image.height;
+    int newWidth, newHeight;
+
+    if (aspectRatio > 1) {
+      newWidth = _maxProcessingSize;
+      newHeight = (_maxProcessingSize / aspectRatio).round();
+    } else {
+      newHeight = _maxProcessingSize;
+      newWidth = (_maxProcessingSize * aspectRatio).round();
+    }
+
+    return img.copyResize(image, width: newWidth, height: newHeight);
+  }
+
+  Future<(List<List<bool>>, String)> _autoDetectBackgroundAdvanced(
+    img.Image image,
+    double tolerance,
+    int edgeMargin,
+  ) async {
+    final cannyMask = await _cannyEdgeDetection(image, tolerance);
+    final edgeMask = await _edgeFloodFillBackground(
+      image,
+      tolerance,
+      edgeMargin,
+    );
+    final colorMask = await _colorBasedRemoval(image, tolerance);
+    final regionMask = await _regionGrowingRemoval(image, tolerance);
+
+    final combinedMask = List.generate(
+      image.height,
+      (y) => List.generate(image.width, (x) {
+        int votes = 0;
+        if (cannyMask[y][x]) votes++;
+        if (edgeMask[y][x]) votes++;
+        if (colorMask[y][x]) votes++;
+        if (regionMask[y][x]) votes++;
+        return votes >= 2;
+      }),
+    );
+
+    final refinedMask = _refineMaskWithEdges(combinedMask, cannyMask);
+
+    return (refinedMask, '智能自动检测（多算法融合）');
+  }
+
+  Future<List<List<bool>>> _cannyEdgeDetection(
+    img.Image image,
+    double tolerance,
+  ) async {
+    final grayImage = _convertToGrayscale(image);
+    final blurred = _applyGaussianBlur(grayImage, 1.0);
+
+    final (gradientX, gradientY) = _computeSobelGradients(blurred);
+    final (magnitude, direction) = _computeGradientMagnitudeAndDirection(
+      gradientX,
+      gradientY,
+    );
+
+    final suppressed = _nonMaximumSuppression(magnitude, direction);
+    final edgeMask = _doubleThresholdHysteresis(
+      suppressed,
+      _cannyLowThreshold * (tolerance / 30.0),
+      _cannyHighThreshold * (tolerance / 30.0),
+    );
+
+    final backgroundMask = _floodFillFromEdges(edgeMask, image, tolerance);
+
+    return backgroundMask;
+  }
+
+  List<List<double>> _convertToGrayscale(img.Image image) {
+    final gray = List.generate(
+      image.height,
+      (y) => List.generate(image.width, (x) {
+        final pixel = image.getPixel(x, y);
+        return 0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b;
+      }),
+    );
+    return gray;
+  }
+
+  List<List<double>> _applyGaussianBlur(
+    List<List<double>> image,
+    double sigma,
+  ) {
+    final height = image.length;
+    final width = image[0].length;
+    final result = List.generate(height, (y) => List.filled(width, 0.0));
+
+    final kernelSize = (6 * sigma).round() | 1;
+    final kernel = _createGaussianKernel(kernelSize, sigma);
+    final halfKernel = kernelSize ~/ 2;
+
+    final temp = List.generate(height, (y) => List.filled(width, 0.0));
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        double sum = 0.0;
+        double weightSum = 0.0;
+        for (int k = -halfKernel; k <= halfKernel; k++) {
+          final nx = (x + k).clamp(0, width - 1);
+          sum += image[y][nx] * kernel[k + halfKernel];
+          weightSum += kernel[k + halfKernel];
+        }
+        temp[y][x] = sum / weightSum;
+      }
+    }
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        double sum = 0.0;
+        double weightSum = 0.0;
+        for (int k = -halfKernel; k <= halfKernel; k++) {
+          final ny = (y + k).clamp(0, height - 1);
+          sum += temp[ny][x] * kernel[k + halfKernel];
+          weightSum += kernel[k + halfKernel];
+        }
+        result[y][x] = sum / weightSum;
+      }
+    }
+
+    return result;
+  }
+
+  List<double> _createGaussianKernel(int size, double sigma) {
+    final kernel = List<double>.filled(size, 0.0);
+    final half = size ~/ 2;
+    double sum = 0.0;
+
+    for (int i = 0; i < size; i++) {
+      final x = i - half;
+      kernel[i] = exp(-(x * x) / (2 * sigma * sigma));
+      sum += kernel[i];
+    }
+
+    for (int i = 0; i < size; i++) {
+      kernel[i] /= sum;
+    }
+
+    return kernel;
+  }
+
+  (List<List<double>>, List<List<double>>) _computeSobelGradients(
+    List<List<double>> image,
+  ) {
+    final height = image.length;
+    final width = image[0].length;
+
+    final gradientX = List.generate(height, (y) => List.filled(width, 0.0));
+    final gradientY = List.generate(height, (y) => List.filled(width, 0.0));
+
+    const sobelX = [
+      [-1, 0, 1],
+      [-2, 0, 2],
+      [-1, 0, 1],
+    ];
+    const sobelY = [
+      [-1, -2, -1],
+      [0, 0, 0],
+      [1, 2, 1],
+    ];
+
+    for (int y = 1; y < height - 1; y++) {
+      for (int x = 1; x < width - 1; x++) {
+        double gx = 0.0, gy = 0.0;
+        for (int ky = -1; ky <= 1; ky++) {
+          for (int kx = -1; kx <= 1; kx++) {
+            final pixel = image[y + ky][x + kx];
+            gx += pixel * sobelX[ky + 1][kx + 1];
+            gy += pixel * sobelY[ky + 1][kx + 1];
+          }
+        }
+        gradientX[y][x] = gx;
+        gradientY[y][x] = gy;
+      }
+    }
+
+    return (gradientX, gradientY);
+  }
+
+  (List<List<double>>, List<List<double>>)
+  _computeGradientMagnitudeAndDirection(
+    List<List<double>> gradientX,
+    List<List<double>> gradientY,
+  ) {
+    final height = gradientX.length;
+    final width = gradientX[0].length;
+
+    final magnitude = List.generate(height, (y) => List.filled(width, 0.0));
+    final direction = List.generate(height, (y) => List.filled(width, 0.0));
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final gx = gradientX[y][x];
+        final gy = gradientY[y][x];
+        magnitude[y][x] = sqrt(gx * gx + gy * gy);
+        direction[y][x] = atan2(gy, gx);
+      }
+    }
+
+    return (magnitude, direction);
+  }
+
+  List<List<double>> _nonMaximumSuppression(
+    List<List<double>> magnitude,
+    List<List<double>> direction,
+  ) {
+    final height = magnitude.length;
+    final width = magnitude[0].length;
+    final result = List.generate(height, (y) => List.filled(width, 0.0));
+
+    for (int y = 1; y < height - 1; y++) {
+      for (int x = 1; x < width - 1; x++) {
+        final angle = direction[y][x];
+        final mag = magnitude[y][x];
+
+        double neighbor1, neighbor2;
+
+        final angleDeg = (angle * 180 / pi).abs();
+        if (angleDeg < 22.5 || angleDeg >= 157.5) {
+          neighbor1 = magnitude[y][x - 1];
+          neighbor2 = magnitude[y][x + 1];
+        } else if (angleDeg < 67.5) {
+          neighbor1 = magnitude[y - 1][x + 1];
+          neighbor2 = magnitude[y + 1][x - 1];
+        } else if (angleDeg < 112.5) {
+          neighbor1 = magnitude[y - 1][x];
+          neighbor2 = magnitude[y + 1][x];
+        } else {
+          neighbor1 = magnitude[y - 1][x - 1];
+          neighbor2 = magnitude[y + 1][x + 1];
+        }
+
+        if (mag >= neighbor1 && mag >= neighbor2) {
+          result[y][x] = mag;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  List<List<bool>> _doubleThresholdHysteresis(
+    List<List<double>> suppressed,
+    double lowThreshold,
+    double highThreshold,
+  ) {
+    final height = suppressed.length;
+    final width = suppressed[0].length;
+    final result = List.generate(height, (y) => List.filled(width, false));
+    final visited = List.generate(height, (y) => List.filled(width, false));
+
+    final strongEdges = <Point<int>>[];
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        if (suppressed[y][x] >= highThreshold) {
+          result[y][x] = true;
+          strongEdges.add(Point(x, y));
+        }
+      }
+    }
+
+    final queue = List<Point<int>>.from(strongEdges);
+
+    while (queue.isNotEmpty) {
+      final point = queue.removeAt(0);
+      final x = point.x;
+      final y = point.y;
+
+      if (visited[y][x]) continue;
+      visited[y][x] = true;
+
+      for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+          if (dx == 0 && dy == 0) continue;
+          final nx = x + dx;
+          final ny = y + dy;
+          if (nx >= 0 &&
+              nx < width &&
+              ny >= 0 &&
+              ny < height &&
+              !visited[ny][nx]) {
+            if (suppressed[ny][nx] >= lowThreshold) {
+              result[ny][nx] = true;
+              queue.add(Point(nx, ny));
+            }
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  List<List<bool>> _floodFillFromEdges(
+    List<List<bool>> edgeMask,
+    img.Image image,
+    double tolerance,
+  ) {
+    final height = image.height;
+    final width = image.width;
+    final mask = List.generate(height, (y) => List.filled(width, false));
+    final visited = List.generate(height, (y) => List.filled(width, false));
+
+    final queue = <Point<int>>[];
+
+    for (int x = 0; x < width; x++) {
+      if (!edgeMask[0][x]) {
+        queue.add(Point(x, 0));
+      }
+      if (!edgeMask[height - 1][x]) {
+        queue.add(Point(x, height - 1));
+      }
+    }
+    for (int y = 0; y < height; y++) {
+      if (!edgeMask[y][0]) {
+        queue.add(Point(0, y));
+      }
+      if (!edgeMask[y][width - 1]) {
+        queue.add(Point(width - 1, y));
+      }
+    }
+
+    final edgeColors = <int>[];
+    for (int x = 0; x < width; x++) {
+      edgeColors.add(_getPixelColor(image, x, 0));
+      edgeColors.add(_getPixelColor(image, x, height - 1));
+    }
+    for (int y = 0; y < height; y++) {
+      edgeColors.add(_getPixelColor(image, 0, y));
+      edgeColors.add(_getPixelColor(image, width - 1, y));
+    }
+    final avgEdgeColor = _calculateAverageColor(edgeColors);
+
+    while (queue.isNotEmpty) {
+      final point = queue.removeAt(0);
+      final x = point.x;
+      final y = point.y;
+
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      if (visited[y][x] || edgeMask[y][x]) continue;
+
+      final pixelColor = _getPixelColor(image, x, y);
+      final colorDiff = _colorDistance(pixelColor, avgEdgeColor);
+
+      if (colorDiff <= tolerance * 2) {
+        visited[y][x] = true;
+        mask[y][x] = true;
+
+        queue.add(Point(x + 1, y));
+        queue.add(Point(x - 1, y));
+        queue.add(Point(x, y + 1));
+        queue.add(Point(x, y - 1));
+      }
+    }
+
+    return mask;
+  }
+
+  Future<List<List<bool>>> _regionGrowingRemoval(
+    img.Image image,
+    double tolerance,
+  ) async {
+    final height = image.height;
+    final width = image.width;
+    final mask = List.generate(height, (y) => List.filled(width, false));
+    final visited = List.generate(height, (y) => List.filled(width, false));
+
+    final seedPoints = _findBackgroundSeedPoints(image);
+
+    for (final seed in seedPoints) {
+      _growRegion(image, mask, visited, seed.x, seed.y, tolerance);
+    }
+
+    return mask;
+  }
+
+  List<Point<int>> _findBackgroundSeedPoints(img.Image image) {
+    final seeds = <Point<int>>[];
+    final edgeColors = <int>[];
+    final colorFrequency = <int, int>{};
+
+    for (int x = 0; x < image.width; x += 5) {
+      final topColor = _quantizeColor(_getPixelColor(image, x, 0));
+      final bottomColor = _quantizeColor(
+        _getPixelColor(image, x, image.height - 1),
+      );
+      edgeColors.add(topColor);
+      edgeColors.add(bottomColor);
+      colorFrequency[topColor] = (colorFrequency[topColor] ?? 0) + 1;
+      colorFrequency[bottomColor] = (colorFrequency[bottomColor] ?? 0) + 1;
+    }
+
+    for (int y = 0; y < image.height; y += 5) {
+      final leftColor = _quantizeColor(_getPixelColor(image, 0, y));
+      final rightColor = _quantizeColor(
+        _getPixelColor(image, image.width - 1, y),
+      );
+      edgeColors.add(leftColor);
+      edgeColors.add(rightColor);
+      colorFrequency[leftColor] = (colorFrequency[leftColor] ?? 0) + 1;
+      colorFrequency[rightColor] = (colorFrequency[rightColor] ?? 0) + 1;
+    }
+
+    final sortedColors = colorFrequency.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final dominantColors = sortedColors.take(3).map((e) => e.key).toSet();
+
+    for (int x = 0; x < image.width; x += 10) {
+      final topColor = _quantizeColor(_getPixelColor(image, x, 0));
+      final bottomColor = _quantizeColor(
+        _getPixelColor(image, x, image.height - 1),
+      );
+      if (dominantColors.contains(topColor)) {
+        seeds.add(Point(x, 0));
+      }
+      if (dominantColors.contains(bottomColor)) {
+        seeds.add(Point(x, image.height - 1));
+      }
+    }
+
+    for (int y = 0; y < image.height; y += 10) {
+      final leftColor = _quantizeColor(_getPixelColor(image, 0, y));
+      final rightColor = _quantizeColor(
+        _getPixelColor(image, image.width - 1, y),
+      );
+      if (dominantColors.contains(leftColor)) {
+        seeds.add(Point(0, y));
+      }
+      if (dominantColors.contains(rightColor)) {
+        seeds.add(Point(image.width - 1, y));
+      }
+    }
+
+    return seeds;
+  }
+
+  void _growRegion(
+    img.Image image,
+    List<List<bool>> mask,
+    List<List<bool>> visited,
+    int startX,
+    int startY,
+    double tolerance,
+  ) {
+    final height = image.height;
+    final width = image.width;
+    final targetColor = _getPixelColor(image, startX, startY);
+    final queue = <Point<int>>[Point(startX, startY)];
+
+    while (queue.isNotEmpty) {
+      final point = queue.removeAt(0);
+      final x = point.x;
+      final y = point.y;
+
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      if (visited[y][x]) continue;
+
+      final pixelColor = _getPixelColor(image, x, y);
+      final colorDiff = _colorDistance(pixelColor, targetColor);
+
+      if (colorDiff <= tolerance) {
+        visited[y][x] = true;
+        mask[y][x] = true;
+
+        queue.add(Point(x + 1, y));
+        queue.add(Point(x - 1, y));
+        queue.add(Point(x, y + 1));
+        queue.add(Point(x, y - 1));
+      }
+    }
+  }
+
+  Future<List<List<bool>>> _edgeFloodFillBackground(
+    img.Image image,
+    double tolerance,
+    int edgeMargin,
+  ) async {
+    final mask = List.generate(
+      image.height,
+      (_) => List.filled(image.width, false),
+    );
+
+    final visited = List.generate(
+      image.height,
+      (_) => List.filled(image.width, false),
+    );
+
+    final edgeColors = <int>[];
+    for (int x = 0; x < image.width; x++) {
+      edgeColors.add(_getPixelColor(image, x, 0));
+      edgeColors.add(_getPixelColor(image, x, image.height - 1));
+    }
+    for (int y = 0; y < image.height; y++) {
+      edgeColors.add(_getPixelColor(image, 0, y));
+      edgeColors.add(_getPixelColor(image, image.width - 1, y));
+    }
+
+    final avgEdgeColor = _calculateAverageColor(edgeColors);
+
+    final queue = <Point<int>>[];
+
+    for (int x = 0; x < image.width; x++) {
+      for (int my = 0; my < edgeMargin && my < image.height; my++) {
+        final topIdx = my;
+        final bottomIdx = image.height - 1 - my;
+        if (!visited[topIdx][x]) {
+          queue.add(Point(x, topIdx));
+        }
+        if (!visited[bottomIdx][x]) {
+          queue.add(Point(x, bottomIdx));
+        }
+      }
+    }
+    for (int y = 0; y < image.height; y++) {
+      for (int mx = 0; mx < edgeMargin && mx < image.width; mx++) {
+        final leftIdx = mx;
+        final rightIdx = image.width - 1 - mx;
+        if (!visited[y][leftIdx]) {
+          queue.add(Point(leftIdx, y));
+        }
+        if (!visited[y][rightIdx]) {
+          queue.add(Point(rightIdx, y));
+        }
+      }
+    }
+
+    while (queue.isNotEmpty) {
+      final point = queue.removeAt(0);
+      final x = point.x;
+      final y = point.y;
+
+      if (x < 0 || x >= image.width || y < 0 || y >= image.height) continue;
+      if (visited[y][x]) continue;
+
+      final pixelColor = _getPixelColor(image, x, y);
+      final colorDiff = _colorDistance(pixelColor, avgEdgeColor);
+
+      if (colorDiff <= tolerance) {
+        visited[y][x] = true;
+        mask[y][x] = true;
+
+        queue.add(Point(x + 1, y));
+        queue.add(Point(x - 1, y));
+        queue.add(Point(x, y + 1));
+        queue.add(Point(x, y - 1));
+      }
+    }
+
+    return mask;
+  }
+
+  Future<List<List<bool>>> _colorBasedRemoval(
+    img.Image image,
+    double tolerance,
+  ) async {
+    final mask = List.generate(
+      image.height,
+      (_) => List.filled(image.width, false),
+    );
+
+    final backgroundColors = _detectBackgroundColors(image);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixelColor = _getPixelColor(image, x, y);
+
+        for (final bgColor in backgroundColors) {
+          if (_colorDistance(pixelColor, bgColor) <= tolerance) {
+            mask[y][x] = true;
+            break;
+          }
+        }
+      }
+    }
+
+    return mask;
+  }
+
+  List<int> _detectBackgroundColors(img.Image image) {
+    final colorCounts = <int, int>{};
+    final sampleSize = (image.width * image.height * 0.1).round();
+
+    final random = Random(42);
+    for (int i = 0; i < sampleSize; i++) {
+      final x = random.nextInt(image.width);
+      final y = random.nextInt(image.height);
+
+      final isEdge =
+          x < 10 || x >= image.width - 10 || y < 10 || y >= image.height - 10;
+      if (!isEdge) continue;
+
+      final color = _getPixelColor(image, x, y);
+      final quantized = _quantizeColor(color);
+      colorCounts[quantized] = (colorCounts[quantized] ?? 0) + 1;
+    }
+
+    final sortedColors = colorCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return sortedColors.take(3).map((e) => e.key).toList();
+  }
+
+  int _getPixelColor(img.Image image, int x, int y) {
+    final pixel = image.getPixel(x, y);
+    return (pixel.r.toInt() << 16) | (pixel.g.toInt() << 8) | pixel.b.toInt();
+  }
+
+  int _quantizeColor(int color) {
+    final r = ((color >> 16) & 0xFF) ~/ 16 * 16;
+    final g = ((color >> 8) & 0xFF) ~/ 16 * 16;
+    final b = (color & 0xFF) ~/ 16 * 16;
+    return (r << 16) | (g << 8) | b;
+  }
+
+  int _calculateAverageColor(List<int> colors) {
+    if (colors.isEmpty) return 0xFFFFFF;
+
+    int totalR = 0, totalG = 0, totalB = 0;
+    for (final color in colors) {
+      totalR += (color >> 16) & 0xFF;
+      totalG += (color >> 8) & 0xFF;
+      totalB += color & 0xFF;
+    }
+
+    final count = colors.length;
+    final avgR = totalR ~/ count;
+    final avgG = totalG ~/ count;
+    final avgB = totalB ~/ count;
+
+    return (avgR << 16) | (avgG << 8) | avgB;
+  }
+
+  double _colorDistance(int color1, int color2) {
+    final r1 = (color1 >> 16) & 0xFF;
+    final g1 = (color1 >> 8) & 0xFF;
+    final b1 = color1 & 0xFF;
+
+    final r2 = (color2 >> 16) & 0xFF;
+    final g2 = (color2 >> 8) & 0xFF;
+    final b2 = color2 & 0xFF;
+
+    final dr = r2 - r1;
+    final dg = g2 - g1;
+    final db = b2 - b1;
+
+    final meanR = (r1 + r2) / 2.0;
+    final weightR = 2.0 + meanR / 256.0;
+    final weightG = 4.0;
+    final weightB = 2.0 + (255.0 - meanR) / 256.0;
+
+    return sqrt(weightR * dr * dr + weightG * dg * dg + weightB * db * db);
+  }
+
+  List<List<bool>> _smoothMaskAdvanced(List<List<bool>> mask) {
+    if (mask.isEmpty || mask[0].isEmpty) return mask;
+
+    var result = mask;
+    for (int i = 0; i < 2; i++) {
+      result = _applyMorphologicalClose(result);
+      result = _applyMorphologicalOpen(result);
+    }
+
+    return result;
+  }
+
+  List<List<bool>> _applyMorphologicalClose(List<List<bool>> mask) {
+    var result = dilateMask(mask, 2);
+    result = erodeMask(result, 2);
+    return result;
+  }
+
+  List<List<bool>> _applyMorphologicalOpen(List<List<bool>> mask) {
+    var result = erodeMask(mask, 2);
+    result = dilateMask(result, 2);
+    return result;
+  }
+
+  List<List<bool>> _featherEdges(List<List<bool>> mask, int radius) {
+    final height = mask.length;
+    final width = mask[0].length;
+    final result = List.generate(height, (y) => List.filled(width, false));
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        if (!mask[y][x]) {
+          result[y][x] = false;
+          continue;
+        }
+
+        bool isEdge = false;
+        for (int dy = -radius; dy <= radius && !isEdge; dy++) {
+          for (int dx = -radius; dx <= radius && !isEdge; dx++) {
+            final ny = y + dy;
+            final nx = x + dx;
+            if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+              if (!mask[ny][nx]) {
+                isEdge = true;
+              }
+            }
+          }
+        }
+
+        result[y][x] = mask[y][x];
+      }
+    }
+
+    return result;
+  }
+
+  List<List<bool>> _refineMaskWithEdges(
+    List<List<bool>> mask,
+    List<List<bool>> edgeMask,
+  ) {
+    final height = mask.length;
+    final width = mask[0].length;
+    final result = List.generate(height, (y) => List.filled(width, false));
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        if (edgeMask[y][x]) {
+          result[y][x] = false;
+        } else {
+          result[y][x] = mask[y][x];
+        }
+      }
+    }
+
+    return result;
+  }
+
+  List<List<bool>> _createEmptyMask(int width, int height) {
+    return List.generate(height, (_) => List.filled(width, false));
+  }
+
+  List<List<bool>> _resizeMask(
+    List<List<bool>> mask,
+    int newWidth,
+    int newHeight,
+  ) {
+    final oldHeight = mask.length;
+    final oldWidth = mask[0].length;
+
+    final resized = List.generate(
+      newHeight,
+      (y) => List.filled(newWidth, false),
+    );
+
+    for (int y = 0; y < newHeight; y++) {
+      for (int x = 0; x < newWidth; x++) {
+        final oldX = (x * oldWidth / newWidth).round().clamp(0, oldWidth - 1);
+        final oldY = (y * oldHeight / newHeight).round().clamp(
+          0,
+          oldHeight - 1,
+        );
+        resized[y][x] = mask[oldY][oldX];
+      }
+    }
+
+    return resized;
+  }
+
+  img.Image _applyMask(img.Image image, List<List<bool>> mask) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+
+        if (y < mask.length && x < mask[0].length && mask[y][x]) {
+          result.setPixel(
+            x,
+            y,
+            img.ColorRgba8(
+              pixel.r.toInt(),
+              pixel.g.toInt(),
+              pixel.b.toInt(),
+              0,
+            ),
+          );
+        } else {
+          result.setPixel(
+            x,
+            y,
+            img.ColorRgba8(
+              pixel.r.toInt(),
+              pixel.g.toInt(),
+              pixel.b.toInt(),
+              pixel.a.toInt(),
+            ),
+          );
+        }
+      }
+    }
+
+    return result;
+  }
+
+  double _calculateMaskConfidence(List<List<bool>> mask) {
+    if (mask.isEmpty) return 0.0;
+
+    int backgroundCount = 0;
+    int totalCount = mask.length * mask[0].length;
+
+    for (final row in mask) {
+      for (final isBackground in row) {
+        if (isBackground) backgroundCount++;
+      }
+    }
+
+    final ratio = backgroundCount / totalCount;
+    if (ratio < 0.05 || ratio > 0.95) return 0.3;
+    if (ratio < 0.1 || ratio > 0.9) return 0.5;
+    if (ratio < 0.2 || ratio > 0.8) return 0.7;
+    return 0.9;
+  }
+
+  List<List<bool>> editMask(
+    List<List<bool>> mask,
+    int centerX,
+    int centerY,
+    int radius,
+    MaskEditTool tool, {
+    double tolerance = 30.0,
+    img.Image? image,
+  }) {
+    final result = mask.map((row) => List<bool>.from(row)).toList();
+
+    switch (tool) {
+      case MaskEditTool.brush:
+        _applyBrush(result, centerX, centerY, radius, true);
+        break;
+      case MaskEditTool.eraser:
+        _applyBrush(result, centerX, centerY, radius, false);
+        break;
+      case MaskEditTool.magicWand:
+        if (image != null) {
+          _applyMagicWand(result, image, centerX, centerY, tolerance);
+        }
+        break;
+      case MaskEditTool.lasso:
+        _applyBrush(result, centerX, centerY, radius ~/ 2, true);
+        break;
+      case MaskEditTool.edgeRefinement:
+        _applyEdgeRefinement(result, centerX, centerY, radius);
+        break;
+    }
+
+    return result;
+  }
+
+  void _applyBrush(
+    List<List<bool>> mask,
+    int centerX,
+    int centerY,
+    int radius,
+    bool value,
+  ) {
+    final height = mask.length;
+    final width = mask[0].length;
+
+    for (int y = centerY - radius; y <= centerY + radius; y++) {
+      for (int x = centerX - radius; x <= centerX + radius; x++) {
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+
+        final distance = sqrt(pow(x - centerX, 2) + pow(y - centerY, 2));
+        if (distance <= radius) {
+          mask[y][x] = value;
+        }
+      }
+    }
+  }
+
+  void _applyMagicWand(
+    List<List<bool>> mask,
+    img.Image image,
+    int startX,
+    int startY,
+    double tolerance,
+  ) {
+    if (startX < 0 ||
+        startX >= image.width ||
+        startY < 0 ||
+        startY >= image.height) {
+      return;
+    }
+
+    final targetColor = _getPixelColor(image, startX, startY);
+    final visited = List.generate(
+      image.height,
+      (_) => List.filled(image.width, false),
+    );
+
+    final queue = <Point<int>>[Point(startX, startY)];
+
+    while (queue.isNotEmpty) {
+      final point = queue.removeAt(0);
+      final x = point.x;
+      final y = point.y;
+
+      if (x < 0 || x >= image.width || y < 0 || y >= image.height) continue;
+      if (visited[y][x]) continue;
+
+      final pixelColor = _getPixelColor(image, x, y);
+      final colorDiff = _colorDistance(pixelColor, targetColor);
+
+      if (colorDiff <= tolerance) {
+        visited[y][x] = true;
+        mask[y][x] = true;
+
+        queue.add(Point(x + 1, y));
+        queue.add(Point(x - 1, y));
+        queue.add(Point(x, y + 1));
+        queue.add(Point(x, y - 1));
+      }
+    }
+  }
+
+  void _applyEdgeRefinement(
+    List<List<bool>> mask,
+    int centerX,
+    int centerY,
+    int radius,
+  ) {
+    final height = mask.length;
+    final width = mask[0].length;
+
+    for (int y = centerY - radius; y <= centerY + radius; y++) {
+      for (int x = centerX - radius; x <= centerX + radius; x++) {
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+
+        final distance = sqrt(pow(x - centerX, 2) + pow(y - centerY, 2));
+        if (distance <= radius) {
+          bool hasTrue = false;
+          bool hasFalse = false;
+          for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+              final ny = y + dy;
+              final nx = x + dx;
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                if (mask[ny][nx]) {
+                  hasTrue = true;
+                } else {
+                  hasFalse = true;
+                }
+              }
+            }
+          }
+          if (hasTrue && hasFalse) {
+            mask[y][x] = !mask[y][x];
+          }
+        }
+      }
+    }
+  }
+
+  List<List<bool>> invertMask(List<List<bool>> mask) {
+    return mask.map((row) => row.map((v) => !v).toList()).toList();
+  }
+
+  List<List<bool>> dilateMask(List<List<bool>> mask, int radius) {
+    final height = mask.length;
+    final width = mask[0].length;
+    final result = List.generate(height, (y) => List<bool>.from(mask[y]));
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        if (!mask[y][x]) {
+          for (int dy = -radius; dy <= radius; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+              final ny = y + dy;
+              final nx = x + dx;
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                if (mask[ny][nx]) {
+                  result[y][x] = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  List<List<bool>> erodeMask(List<List<bool>> mask, int radius) {
+    final height = mask.length;
+    final width = mask[0].length;
+    final result = List.generate(height, (y) => List.filled(width, false));
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        if (mask[y][x]) {
+          bool allNeighbors = true;
+          for (int dy = -radius; dy <= radius && allNeighbors; dy++) {
+            for (int dx = -radius; dx <= radius && allNeighbors; dx++) {
+              final ny = y + dy;
+              final nx = x + dx;
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                if (!mask[ny][nx]) {
+                  allNeighbors = false;
+                }
+              }
+            }
+          }
+          result[y][x] = allNeighbors;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  img.Image createMaskPreview(
+    List<List<bool>> mask, {
+    int width = 200,
+    int height = 200,
+  }) {
+    final resized = _resizeMask(mask, width, height);
+    final result = img.Image(width: width, height: height);
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        if (resized[y][x]) {
+          result.setPixel(x, y, img.ColorRgba8(0, 0, 0, 128));
+        } else {
+          result.setPixel(x, y, img.ColorRgba8(255, 255, 255, 0));
+        }
+      }
+    }
+
+    return result;
+  }
+
+  img.Image createTransparentBackground(
+    img.Image image,
+    List<List<bool>> mask,
+  ) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+
+        if (y < mask.length && x < mask[0].length && mask[y][x]) {
+          result.setPixel(
+            x,
+            y,
+            img.ColorRgba8(
+              pixel.r.toInt(),
+              pixel.g.toInt(),
+              pixel.b.toInt(),
+              0,
+            ),
+          );
+        } else {
+          result.setPixel(
+            x,
+            y,
+            img.ColorRgba8(
+              pixel.r.toInt(),
+              pixel.g.toInt(),
+              pixel.b.toInt(),
+              pixel.a.toInt(),
+            ),
+          );
+        }
+      }
+    }
+
+    return result;
+  }
+}

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import 'storage_service.dart';
@@ -12,20 +13,36 @@ class DesignStorageService {
 
   final StorageService _storageService;
 
-  static final DesignStorageService _instance = DesignStorageService._internal();
+  static final DesignStorageService _instance =
+      DesignStorageService._internal();
   factory DesignStorageService() => _instance;
   DesignStorageService._internal() : _storageService = StorageService();
 
   DesignStorageService.withStorage(this._storageService);
 
-  String get _designsPath => '${_storageService.appDocDir.path}/$_designsDirName';
-
-  Future<Directory> _getDesignsDir() async {
-    final dir = Directory(_designsPath);
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
+  String get _designsPath {
+    try {
+      return '${_storageService.appDocDir.path}/$_designsDirName';
+    } catch (e) {
+      debugPrint('获取设计路径失败: $e');
+      return '';
     }
-    return dir;
+  }
+
+  Future<Directory?> _getDesignsDir() async {
+    try {
+      final path = _designsPath;
+      if (path.isEmpty) return null;
+
+      final dir = Directory(path);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return dir;
+    } catch (e) {
+      debugPrint('创建设计目录失败: $e');
+      return null;
+    }
   }
 
   Future<void> _saveDesignsIndex(List<String> designIds) async {
@@ -37,28 +54,61 @@ class DesignStorageService {
   }
 
   Future<List<String>> _loadDesignsIndex() async {
-    final data = await _storageService.readJson(_designsIndexFileName);
-    if (data == null) return [];
-    return (data['designIds'] as List<dynamic>?)?.cast<String>() ?? [];
+    try {
+      final data = await _storageService.readJson(_designsIndexFileName);
+      if (data == null) return [];
+      final designIds = data['designIds'];
+      if (designIds is! List) return [];
+      return designIds.cast<String>();
+    } catch (e) {
+      debugPrint('加载设计索引失败: $e');
+      return [];
+    }
   }
 
-  Future<void> saveDesign(BeadDesign design) async {
-    await _getDesignsDir();
-    final fileName = '$_designsDirName/${design.id}.json';
-    await _storageService.writeJson(fileName, design.toJson());
+  Future<bool> saveDesign(BeadDesign design) async {
+    try {
+      final dir = await _getDesignsDir();
+      if (dir == null) {
+        debugPrint('无法获取设计目录');
+        return false;
+      }
 
-    final designIds = await _loadDesignsIndex();
-    if (!designIds.contains(design.id)) {
-      designIds.add(design.id);
-      await _saveDesignsIndex(designIds);
+      final fileName = '$_designsDirName/${design.id}.json';
+      final success = await _storageService.writeJson(
+        fileName,
+        design.toJson(),
+      );
+      if (!success) {
+        debugPrint('保存设计文件失败: ${design.id}');
+        return false;
+      }
+
+      final designIds = await _loadDesignsIndex();
+      if (!designIds.contains(design.id)) {
+        designIds.add(design.id);
+        await _saveDesignsIndex(designIds);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('保存设计失败: $e');
+      return false;
     }
   }
 
   Future<BeadDesign?> loadDesign(String id) async {
-    final fileName = '$_designsDirName/$id.json';
-    final data = await _storageService.readJson(fileName);
-    if (data == null) return null;
-    return BeadDesign.fromJson(data);
+    try {
+      if (id.isEmpty) return null;
+
+      final fileName = '$_designsDirName/$id.json';
+      final data = await _storageService.readJson(fileName);
+      if (data == null) return null;
+
+      return BeadDesign.fromJson(data);
+    } catch (e) {
+      debugPrint('加载设计失败: $e');
+      return null;
+    }
   }
 
   Future<List<BeadDesign>> loadAllDesigns() async {
@@ -66,18 +116,28 @@ class DesignStorageService {
     final designs = <BeadDesign>[];
 
     for (final id in designIds) {
-      final design = await loadDesign(id);
-      if (design != null) {
-        designs.add(design);
+      try {
+        final design = await loadDesign(id);
+        if (design != null) {
+          designs.add(design);
+        }
+      } catch (e) {
+        debugPrint('加载设计 $id 失败: $e');
       }
     }
 
-    designs.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    try {
+      designs.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    } catch (e) {
+      debugPrint('排序设计失败: $e');
+    }
     return designs;
   }
 
   Future<bool> deleteDesign(String id) async {
     try {
+      if (id.isEmpty) return false;
+
       final fileName = '$_designsDirName/$id.json';
       await _storageService.deleteFile(fileName);
 
@@ -87,19 +147,31 @@ class DesignStorageService {
 
       return true;
     } catch (e) {
+      debugPrint('删除设计失败: $e');
       return false;
     }
   }
 
   Future<bool> designExists(String id) async {
-    final fileName = '$_designsDirName/$id.json';
-    return _storageService.fileExists(fileName);
+    try {
+      if (id.isEmpty) return false;
+      final fileName = '$_designsDirName/$id.json';
+      return _storageService.fileExists(fileName);
+    } catch (e) {
+      debugPrint('检查设计存在失败: $e');
+      return false;
+    }
   }
 
   Future<String?> exportDesignToJson(String id) async {
-    final design = await loadDesign(id);
-    if (design == null) return null;
-    return design.toJson().toString();
+    try {
+      final design = await loadDesign(id);
+      if (design == null) return null;
+      return const JsonEncoder.withIndent('  ').convert(design.toJson());
+    } catch (e) {
+      debugPrint('导出设计JSON失败: $e');
+      return null;
+    }
   }
 
   Future<bool> exportDesignToJsonFile(String id) async {
@@ -116,22 +188,32 @@ class DesignStorageService {
 
       if (outputPath != null) {
         final file = File(outputPath);
-        await file.writeAsString(design.toJson().toString());
+        final jsonStr = const JsonEncoder.withIndent(
+          '  ',
+        ).convert(design.toJson());
+        await file.writeAsString(jsonStr);
         return true;
       }
       return false;
     } catch (e) {
+      debugPrint('导出设计到文件失败: $e');
       return false;
     }
   }
 
   Future<BeadDesign?> importDesignFromJson(String jsonContent) async {
     try {
-      final data = Map<String, dynamic>.from(
-        const JsonDecoder().convert(jsonContent) as Map,
-      );
-      return BeadDesign.fromJson(data);
+      if (jsonContent.isEmpty) return null;
+
+      final decoded = const JsonDecoder().convert(jsonContent);
+      if (decoded is! Map<String, dynamic>) {
+        debugPrint('JSON格式错误');
+        return null;
+      }
+
+      return BeadDesign.fromJson(decoded);
     } catch (e) {
+      debugPrint('从JSON导入设计失败: $e');
       return null;
     }
   }
@@ -151,12 +233,13 @@ class DesignStorageService {
       }
       return null;
     } catch (e) {
+      debugPrint('从文件导入设计失败: $e');
       return null;
     }
   }
 
-  Future<void> saveImportedDesign(BeadDesign design) async {
-    await saveDesign(design);
+  Future<bool> saveImportedDesign(BeadDesign design) async {
+    return await saveDesign(design);
   }
 
   Future<int> getDesignCount() async {

@@ -4,20 +4,32 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum GpuBackend {
-  auto,
-  metal,
-  vulkan,
-  directX,
-  openGL,
-  software,
+enum GpuBackend { auto, metal, vulkan, directX, openGL, software }
+
+enum PerformanceLevel { low, medium, high, ultra }
+
+enum FpsLimit {
+  fps30(30, '30 FPS'),
+  fps60(60, '60 FPS'),
+  fps120(120, '120 FPS'),
+  unlimited(0, '无限制');
+
+  final int value;
+  final String label;
+  const FpsLimit(this.value, this.label);
 }
 
-enum PerformanceLevel {
-  low,
-  medium,
-  high,
-  ultra,
+enum CacheSize {
+  small(50, '小 (50 MB)'),
+  medium(100, '中 (100 MB)'),
+  large(200, '大 (200 MB)'),
+  unlimited(-1, '无限制');
+
+  final int valueMB;
+  final String label;
+  const CacheSize(this.valueMB, this.label);
+
+  int get maxCacheBytes => valueMB > 0 ? valueMB * 1024 * 1024 : -1;
 }
 
 class PerformanceConfig {
@@ -28,6 +40,8 @@ class PerformanceConfig {
   final int targetFrameRate;
   final bool enableMultithreading;
   final bool enableCacheOptimization;
+  final FpsLimit fpsLimit;
+  final CacheSize cacheSize;
 
   const PerformanceConfig({
     this.gpuBackend = GpuBackend.auto,
@@ -37,7 +51,12 @@ class PerformanceConfig {
     this.targetFrameRate = 60,
     this.enableMultithreading = true,
     this.enableCacheOptimization = true,
+    this.fpsLimit = FpsLimit.fps60,
+    this.cacheSize = CacheSize.medium,
   });
+
+  int get effectiveFrameRate =>
+      fpsLimit == FpsLimit.unlimited ? targetFrameRate : fpsLimit.value;
 
   PerformanceConfig copyWith({
     GpuBackend? gpuBackend,
@@ -47,15 +66,21 @@ class PerformanceConfig {
     int? targetFrameRate,
     bool? enableMultithreading,
     bool? enableCacheOptimization,
+    FpsLimit? fpsLimit,
+    CacheSize? cacheSize,
   }) {
     return PerformanceConfig(
       gpuBackend: gpuBackend ?? this.gpuBackend,
       performanceLevel: performanceLevel ?? this.performanceLevel,
-      enableGpuAcceleration: enableGpuAcceleration ?? this.enableGpuAcceleration,
+      enableGpuAcceleration:
+          enableGpuAcceleration ?? this.enableGpuAcceleration,
       enableVsync: enableVsync ?? this.enableVsync,
       targetFrameRate: targetFrameRate ?? this.targetFrameRate,
       enableMultithreading: enableMultithreading ?? this.enableMultithreading,
-      enableCacheOptimization: enableCacheOptimization ?? this.enableCacheOptimization,
+      enableCacheOptimization:
+          enableCacheOptimization ?? this.enableCacheOptimization,
+      fpsLimit: fpsLimit ?? this.fpsLimit,
+      cacheSize: cacheSize ?? this.cacheSize,
     );
   }
 }
@@ -68,17 +93,20 @@ class PerformanceService extends ChangeNotifier {
   static const String _targetFrameRateKey = 'performance_target_fps';
   static const String _enableMultithreadingKey = 'performance_multithreading';
   static const String _enableCacheOptimizationKey = 'performance_cache_opt';
+  static const String _fpsLimitKey = 'performance_fps_limit';
+  static const String _cacheSizeKey = 'performance_cache_size';
 
   SharedPreferences? _prefs;
   PerformanceConfig _config = const PerformanceConfig();
-  
+
   final List<FrameTimingInfo> _frameTimings = [];
   static const int _maxFrameTimings = 120;
-  
+
   double _averageFrameTime = 0.0;
   double _gpuUsage = 0.0;
   int _droppedFrames = 0;
   bool _isMonitoring = false;
+  int _currentCacheUsage = 0;
 
   static final PerformanceService _instance = PerformanceService._internal();
   factory PerformanceService() => _instance;
@@ -90,6 +118,8 @@ class PerformanceService extends ChangeNotifier {
   int get droppedFrames => _droppedFrames;
   bool get isMonitoring => _isMonitoring;
   List<FrameTimingInfo> get frameTimings => List.unmodifiable(_frameTimings);
+  int get currentCacheUsage => _currentCacheUsage;
+  int get maxCacheBytes => _config.cacheSize.maxCacheBytes;
 
   Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
@@ -104,8 +134,11 @@ class PerformanceService extends ChangeNotifier {
     final enableGpu = _prefs!.getBool(_enableGpuKey) ?? true;
     final enableVsync = _prefs!.getBool(_enableVsyncKey) ?? true;
     final targetFps = _prefs!.getInt(_targetFrameRateKey) ?? 60;
-    final enableMultithreading = _prefs!.getBool(_enableMultithreadingKey) ?? true;
+    final enableMultithreading =
+        _prefs!.getBool(_enableMultithreadingKey) ?? true;
     final enableCacheOpt = _prefs!.getBool(_enableCacheOptimizationKey) ?? true;
+    final fpsLimitIndex = _prefs!.getInt(_fpsLimitKey) ?? 1;
+    final cacheSizeIndex = _prefs!.getInt(_cacheSizeKey) ?? 1;
 
     _config = PerformanceConfig(
       gpuBackend: GpuBackend.values[gpuBackendIndex],
@@ -115,6 +148,8 @@ class PerformanceService extends ChangeNotifier {
       targetFrameRate: targetFps,
       enableMultithreading: enableMultithreading,
       enableCacheOptimization: enableCacheOpt,
+      fpsLimit: FpsLimit.values[fpsLimitIndex],
+      cacheSize: CacheSize.values[cacheSizeIndex],
     );
     notifyListeners();
   }
@@ -123,12 +158,23 @@ class PerformanceService extends ChangeNotifier {
     if (_prefs == null) return;
 
     await _prefs!.setInt(_gpuBackendKey, newConfig.gpuBackend.index);
-    await _prefs!.setInt(_performanceLevelKey, newConfig.performanceLevel.index);
+    await _prefs!.setInt(
+      _performanceLevelKey,
+      newConfig.performanceLevel.index,
+    );
     await _prefs!.setBool(_enableGpuKey, newConfig.enableGpuAcceleration);
     await _prefs!.setBool(_enableVsyncKey, newConfig.enableVsync);
     await _prefs!.setInt(_targetFrameRateKey, newConfig.targetFrameRate);
-    await _prefs!.setBool(_enableMultithreadingKey, newConfig.enableMultithreading);
-    await _prefs!.setBool(_enableCacheOptimizationKey, newConfig.enableCacheOptimization);
+    await _prefs!.setBool(
+      _enableMultithreadingKey,
+      newConfig.enableMultithreading,
+    );
+    await _prefs!.setBool(
+      _enableCacheOptimizationKey,
+      newConfig.enableCacheOptimization,
+    );
+    await _prefs!.setInt(_fpsLimitKey, newConfig.fpsLimit.index);
+    await _prefs!.setInt(_cacheSizeKey, newConfig.cacheSize.index);
 
     _config = newConfig;
     notifyListeners();
@@ -146,10 +192,9 @@ class PerformanceService extends ChangeNotifier {
       PerformanceLevel.ultra => 120,
     };
 
-    await updateConfig(_config.copyWith(
-      performanceLevel: level,
-      targetFrameRate: targetFps,
-    ));
+    await updateConfig(
+      _config.copyWith(performanceLevel: level, targetFrameRate: targetFps),
+    );
   }
 
   Future<void> setEnableGpuAcceleration(bool enable) async {
@@ -162,6 +207,25 @@ class PerformanceService extends ChangeNotifier {
 
   Future<void> setTargetFrameRate(int fps) async {
     await updateConfig(_config.copyWith(targetFrameRate: fps));
+  }
+
+  Future<void> setFpsLimit(FpsLimit limit) async {
+    await updateConfig(_config.copyWith(fpsLimit: limit));
+  }
+
+  Future<void> setCacheSize(CacheSize size) async {
+    await updateConfig(_config.copyWith(cacheSize: size));
+  }
+
+  void updateCacheUsage(int bytes) {
+    _currentCacheUsage = bytes;
+    notifyListeners();
+  }
+
+  bool shouldClearCache(int newBytes) {
+    final maxBytes = _config.cacheSize.maxCacheBytes;
+    if (maxBytes < 0) return false;
+    return _currentCacheUsage + newBytes > maxBytes;
   }
 
   void startMonitoring() {
@@ -183,19 +247,21 @@ class PerformanceService extends ChangeNotifier {
       final frameTime = timing.totalSpan.inMicroseconds / 1000.0;
       final buildTime = timing.buildDuration.inMicroseconds / 1000.0;
       final rasterTime = timing.rasterDuration.inMicroseconds / 1000.0;
-      
+
       final isDropped = frameTime > (1000.0 / _config.targetFrameRate) * 1.5;
       if (isDropped) {
         _droppedFrames++;
       }
 
-      _frameTimings.add(FrameTimingInfo(
-        frameTime: frameTime,
-        buildTime: buildTime,
-        rasterTime: rasterTime,
-        timestamp: DateTime.now(),
-        isDropped: isDropped,
-      ));
+      _frameTimings.add(
+        FrameTimingInfo(
+          frameTime: frameTime,
+          buildTime: buildTime,
+          rasterTime: rasterTime,
+          timestamp: DateTime.now(),
+          isDropped: isDropped,
+        ),
+      );
 
       if (_frameTimings.length > _maxFrameTimings) {
         _frameTimings.removeAt(0);
@@ -213,15 +279,18 @@ class PerformanceService extends ChangeNotifier {
         ? _frameTimings.sublist(_frameTimings.length - 60)
         : _frameTimings;
 
-    _averageFrameTime = recentTimings
-        .map((t) => t.frameTime)
-        .reduce((a, b) => a + b) / recentTimings.length;
+    _averageFrameTime =
+        recentTimings.map((t) => t.frameTime).reduce((a, b) => a + b) /
+        recentTimings.length;
 
-    final avgRasterTime = recentTimings
-        .map((t) => t.rasterTime)
-        .reduce((a, b) => a + b) / recentTimings.length;
+    final avgRasterTime =
+        recentTimings.map((t) => t.rasterTime).reduce((a, b) => a + b) /
+        recentTimings.length;
 
-    _gpuUsage = (avgRasterTime / (1000.0 / _config.targetFrameRate) * 100).clamp(0.0, 100.0);
+    final targetFps = _config.effectiveFrameRate.toDouble();
+    _gpuUsage = targetFps > 0
+        ? (avgRasterTime / (1000.0 / targetFps) * 100).clamp(0.0, 100.0)
+        : 0.0;
   }
 
   void resetMetrics() {
@@ -276,6 +345,10 @@ class PerformanceService extends ChangeNotifier {
       isGpuAccelerated: _config.enableGpuAcceleration,
       currentBackend: _config.gpuBackend,
       platformBackend: getPlatformDefaultBackend(),
+      fpsLimit: _config.fpsLimit,
+      cacheSize: _config.cacheSize,
+      currentCacheUsage: _currentCacheUsage,
+      maxCacheBytes: _config.cacheSize.maxCacheBytes,
     );
   }
 }
@@ -306,6 +379,10 @@ class PerformanceMetrics {
   final bool isGpuAccelerated;
   final GpuBackend currentBackend;
   final String platformBackend;
+  final FpsLimit fpsLimit;
+  final CacheSize cacheSize;
+  final int currentCacheUsage;
+  final int maxCacheBytes;
 
   const PerformanceMetrics({
     required this.averageFrameTime,
@@ -315,12 +392,22 @@ class PerformanceMetrics {
     required this.isGpuAccelerated,
     required this.currentBackend,
     required this.platformBackend,
+    required this.fpsLimit,
+    required this.cacheSize,
+    this.currentCacheUsage = 0,
+    this.maxCacheBytes = 100 * 1024 * 1024,
   });
 
   String get frameRateFormatted => '${frameRate.toStringAsFixed(1)} FPS';
   String get frameTimeFormatted => '${averageFrameTime.toStringAsFixed(2)} ms';
   String get gpuUsageFormatted => '${gpuUsage.toStringAsFixed(1)}%';
-  
+  String get cacheUsageFormatted {
+    if (maxCacheBytes < 0) {
+      return '${(currentCacheUsage / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
+    return '${(currentCacheUsage / 1024 / 1024).toStringAsFixed(1)} / ${(maxCacheBytes / 1024 / 1024).toStringAsFixed(0)} MB';
+  }
+
   PerformanceRating get performanceRating {
     if (frameRate >= 55) return PerformanceRating.excellent;
     if (frameRate >= 45) return PerformanceRating.good;
@@ -329,9 +416,4 @@ class PerformanceMetrics {
   }
 }
 
-enum PerformanceRating {
-  excellent,
-  good,
-  fair,
-  poor,
-}
+enum PerformanceRating { excellent, good, fair, poor }

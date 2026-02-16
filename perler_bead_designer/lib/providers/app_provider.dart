@@ -8,6 +8,7 @@ class AppProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.system;
   int _currentPageIndex = 0;
   bool _sidebarExpanded = true;
+  bool _sidebarAutoCollapse = true;
   bool _initialized = false;
   bool _animationsEnabled = true;
   bool _pageTransitionsEnabled = true;
@@ -31,10 +32,17 @@ class AppProvider extends ChangeNotifier {
   bool _easterEggDiscovered = false;
   bool _debugOverlayEnabled = false;
   bool _showBead3DEffect = true;
+  ThemeColors _themeColors = ThemeColors.fromPreset(
+    PresetThemeType.defaultPink,
+  );
+  PresetThemeType _presetTheme = PresetThemeType.defaultPink;
+  List<ThemeColors> _savedColorSchemes = [];
+  bool _isCustomTheme = false;
 
   ThemeMode get themeMode => _themeMode;
   int get currentPageIndex => _currentPageIndex;
   bool get sidebarExpanded => _sidebarExpanded;
+  bool get sidebarAutoCollapse => _sidebarAutoCollapse;
   bool get initialized => _initialized;
   bool get animationsEnabled => _animationsEnabled;
   bool get pageTransitionsEnabled => _pageTransitionsEnabled;
@@ -58,6 +66,18 @@ class AppProvider extends ChangeNotifier {
   bool get easterEggDiscovered => _easterEggDiscovered;
   bool get debugOverlayEnabled => _debugOverlayEnabled;
   bool get showBead3DEffect => _showBead3DEffect;
+  ThemeColors get themeColors => _themeColors;
+  PresetThemeType get presetTheme => _presetTheme;
+  List<ThemeColors> get savedColorSchemes => _savedColorSchemes;
+  bool get isCustomTheme => _isCustomTheme;
+  double _cellSize = 20.0;
+  String _gridColor = '#9E9E9E';
+  double _coordinateFontSize = -1;
+  double get cellSize => _cellSize;
+  String get gridColor => _gridColor;
+  double get coordinateFontSize => _coordinateFontSize;
+  double get effectiveCoordinateFontSize =>
+      _coordinateFontSize > 0 ? _coordinateFontSize : _cellSize * 0.35;
 
   AppProvider({SettingsService? settingsService})
     : _settingsService = settingsService ?? SettingsService();
@@ -91,6 +111,12 @@ class AppProvider extends ChangeNotifier {
     _easterEggDiscovered = _settingsService.getEasterEggDiscovered();
     _debugOverlayEnabled = _settingsService.getDebugOverlayEnabled();
     _showBead3DEffect = _settingsService.getShowBead3DEffect();
+    _themeColors = _settingsService.getThemeColors();
+    _presetTheme = _settingsService.getPresetTheme();
+    _savedColorSchemes = _settingsService.getSavedColorSchemes();
+    _cellSize = _settingsService.getCellSize();
+    _gridColor = _settingsService.getGridColor();
+    _coordinateFontSize = _settingsService.getCoordinateFontSize();
     _initialized = true;
     notifyListeners();
   }
@@ -118,6 +144,25 @@ class AppProvider extends ChangeNotifier {
     if (_sidebarExpanded == expanded) return;
     _sidebarExpanded = expanded;
     notifyListeners();
+  }
+
+  void setSidebarAutoCollapse(bool enabled) {
+    if (_sidebarAutoCollapse == enabled) return;
+    _sidebarAutoCollapse = enabled;
+    notifyListeners();
+  }
+
+  void updateSidebarForWidth(
+    double width, {
+    double collapseThreshold = 1300.0,
+  }) {
+    if (!_sidebarAutoCollapse) return;
+
+    final shouldCollapse = width < collapseThreshold;
+    if (shouldCollapse != !_sidebarExpanded) {
+      _sidebarExpanded = !shouldCollapse;
+      notifyListeners();
+    }
   }
 
   Future<void> setAnimationsEnabled(bool enabled) async {
@@ -277,6 +322,144 @@ class AppProvider extends ChangeNotifier {
     if (_showBead3DEffect == enabled) return;
     _showBead3DEffect = enabled;
     await _settingsService.setShowBead3DEffect(enabled);
+    notifyListeners();
+  }
+
+  Future<void> setThemeColors(ThemeColors colors) async {
+    _themeColors = colors;
+    _isCustomTheme = true;
+    await _settingsService.setThemeColors(colors);
+    notifyListeners();
+  }
+
+  Future<void> setThemeColorsImmediate(ThemeColors colors) async {
+    _themeColors = colors;
+    _isCustomTheme = true;
+    notifyListeners();
+    await _settingsService.setThemeColors(colors);
+  }
+
+  Future<void> setPresetTheme(PresetThemeType preset) async {
+    _presetTheme = preset;
+    _themeColors = ThemeColors.fromPreset(preset);
+    _isCustomTheme = false;
+    await _settingsService.setPresetTheme(preset);
+    await _settingsService.setThemeColors(_themeColors);
+    notifyListeners();
+  }
+
+  Future<void> setCustomThemeColors({
+    Color? primaryColor,
+    Color? secondaryColor,
+    Color? accentColor,
+    String? name,
+  }) async {
+    _themeColors = ThemeColors(
+      primaryColor: primaryColor ?? _themeColors.primaryColor,
+      secondaryColor: secondaryColor ?? _themeColors.secondaryColor,
+      accentColor: accentColor ?? _themeColors.accentColor,
+      name: name ?? _themeColors.name,
+    );
+    _isCustomTheme = true;
+    await _settingsService.setThemeColors(_themeColors);
+    notifyListeners();
+  }
+
+  void updatePrimaryColorImmediate(Color color) {
+    _themeColors = ThemeColors(
+      primaryColor: color,
+      secondaryColor: _themeColors.secondaryColor,
+      accentColor: _themeColors.accentColor,
+      name: _themeColors.name,
+    );
+    _isCustomTheme = true;
+    notifyListeners();
+  }
+
+  void updateSecondaryColorImmediate(Color color) {
+    _themeColors = ThemeColors(
+      primaryColor: _themeColors.primaryColor,
+      secondaryColor: color,
+      accentColor: _themeColors.accentColor,
+      name: _themeColors.name,
+    );
+    _isCustomTheme = true;
+    notifyListeners();
+  }
+
+  void updateAccentColorImmediate(Color color) {
+    _themeColors = ThemeColors(
+      primaryColor: _themeColors.primaryColor,
+      secondaryColor: _themeColors.secondaryColor,
+      accentColor: color,
+      name: _themeColors.name,
+    );
+    _isCustomTheme = true;
+    notifyListeners();
+  }
+
+  Future<void> persistThemeColors() async {
+    await _settingsService.setThemeColors(_themeColors);
+  }
+
+  Future<void> saveCurrentColorScheme(String name) async {
+    final newScheme = ThemeColors(
+      primaryColor: _themeColors.primaryColor,
+      secondaryColor: _themeColors.secondaryColor,
+      accentColor: _themeColors.accentColor,
+      name: name,
+    );
+    _savedColorSchemes.add(newScheme);
+    await _settingsService.setSavedColorSchemes(_savedColorSchemes);
+    notifyListeners();
+  }
+
+  Future<void> loadSavedColorScheme(int index) async {
+    if (index >= 0 && index < _savedColorSchemes.length) {
+      _themeColors = _savedColorSchemes[index];
+      await _settingsService.setThemeColors(_themeColors);
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteSavedColorScheme(int index) async {
+    if (index >= 0 && index < _savedColorSchemes.length) {
+      _savedColorSchemes.removeAt(index);
+      await _settingsService.setSavedColorSchemes(_savedColorSchemes);
+      notifyListeners();
+    }
+  }
+
+  void setCellSizeImmediate(double size) {
+    if (_cellSize == size) return;
+    _cellSize = size;
+    notifyListeners();
+  }
+
+  Future<void> setCellSize(double size) async {
+    if (_cellSize == size) return;
+    _cellSize = size;
+    await _settingsService.setCellSize(size);
+    notifyListeners();
+  }
+
+  Future<void> setGridColor(String color) async {
+    if (_gridColor == color) return;
+    _gridColor = color;
+    await _settingsService.setGridColor(color);
+    notifyListeners();
+  }
+
+  void setCoordinateFontSizeImmediate(double size) {
+    if (_coordinateFontSize == size) return;
+    _coordinateFontSize = size;
+    notifyListeners();
+  }
+
+  Future<void> setCoordinateFontSize(double size) async {
+    if (_coordinateFontSize == size) return;
+    _coordinateFontSize = size;
+    await _settingsService.setCoordinateFontSize(size);
     notifyListeners();
   }
 }

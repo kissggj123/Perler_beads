@@ -9,29 +9,18 @@ import '../models/bead_design.dart';
 import '../models/inventory.dart';
 import '../utils/pdf_generator.dart';
 
-enum ExportFormat {
-  png,
-  pdf,
-  csv,
-}
+enum ExportFormat { png, pdf, csv }
 
-enum MaterialListFormat {
-  csv,
-  pdf,
-}
+enum MaterialListFormat { csv, pdf }
 
 class ExportResult {
   final bool success;
   final String? filePath;
   final String? errorMessage;
 
-  ExportResult.success(this.filePath)
-      : success = true,
-        errorMessage = null;
+  ExportResult.success(this.filePath) : success = true, errorMessage = null;
 
-  ExportResult.failure(this.errorMessage)
-      : success = false,
-        filePath = null;
+  ExportResult.failure(this.errorMessage) : success = false, filePath = null;
 }
 
 class ExportService {
@@ -46,14 +35,24 @@ class ExportService {
     String? customPath,
   }) async {
     try {
+      if (design.width <= 0 || design.height <= 0) {
+        return ExportResult.failure('无效的设计尺寸');
+      }
+
       final image = await _generateDesignImage(
         design,
-        scale: scale,
+        scale: scale.clamp(1, maxScale),
         showGrid: showGrid,
         backgroundColor: backgroundColor ?? Colors.white,
       );
 
-      final filePath = customPath ?? await _getSavePath('${design.name}.png', 'PNG 文件', 'png');
+      if (image == null) {
+        return ExportResult.failure('生成图片失败');
+      }
+
+      final filePath =
+          customPath ??
+          await _getSavePath('${design.name}.png', 'PNG 文件', 'png');
       if (filePath == null) {
         return ExportResult.failure('未选择保存位置');
       }
@@ -63,6 +62,7 @@ class ExportService {
 
       return ExportResult.success(filePath);
     } catch (e) {
+      debugPrint('导出PNG失败: $e');
       return ExportResult.failure('导出 PNG 失败: $e');
     }
   }
@@ -76,7 +76,9 @@ class ExportService {
     String? customPath,
   }) async {
     try {
-      final filePath = customPath ?? await _getSavePath('${design.name}.pdf', 'PDF 文件', 'pdf');
+      final filePath =
+          customPath ??
+          await _getSavePath('${design.name}.pdf', 'PDF 文件', 'pdf');
       if (filePath == null) {
         return ExportResult.failure('未选择保存位置');
       }
@@ -105,7 +107,9 @@ class ExportService {
   }) async {
     try {
       if (format == MaterialListFormat.pdf) {
-        final filePath = customPath ?? await _getSavePath('${design.name}_材料清单.pdf', 'PDF 文件', 'pdf');
+        final filePath =
+            customPath ??
+            await _getSavePath('${design.name}_材料清单.pdf', 'PDF 文件', 'pdf');
         if (filePath == null) {
           return ExportResult.failure('未选择保存位置');
         }
@@ -140,7 +144,12 @@ class ExportService {
         backgroundColor: backgroundColor,
       );
 
-      final filePath = customPath ?? await _getSavePath('${design.name}.png', '图片文件', 'png');
+      if (image == null) {
+        return ExportResult.failure('生成图片失败');
+      }
+
+      final filePath =
+          customPath ?? await _getSavePath('${design.name}.png', '图片文件', 'png');
       if (filePath == null) {
         return ExportResult.failure('未选择保存位置');
       }
@@ -150,63 +159,89 @@ class ExportService {
 
       return ExportResult.success(filePath);
     } catch (e) {
+      debugPrint('导出图片失败: $e');
       return ExportResult.failure('导出图片失败: $e');
     }
   }
 
-  static Future<Uint8List> _generateDesignImage(
+  static Future<Uint8List?> _generateDesignImage(
     BeadDesign design, {
     required int scale,
     required bool showGrid,
     required Color backgroundColor,
   }) async {
-    final beadSize = scale.clamp(1, maxScale);
-    final imageWidth = design.width * beadSize;
-    final imageHeight = design.height * beadSize;
+    try {
+      if (design.width <= 0 || design.height <= 0) {
+        debugPrint('无效的设计尺寸');
+        return null;
+      }
 
-    final image = img.Image(width: imageWidth, height: imageHeight);
+      final beadSize = scale.clamp(1, maxScale);
+      final imageWidth = design.width * beadSize;
+      final imageHeight = design.height * beadSize;
 
-    final bgColor = img.ColorRgba8(
-      (backgroundColor.r * 255.0).round().clamp(0, 255),
-      (backgroundColor.g * 255.0).round().clamp(0, 255),
-      (backgroundColor.b * 255.0).round().clamp(0, 255),
-      (backgroundColor.a * 255.0).round().clamp(0, 255),
-    );
-    img.fill(image, color: bgColor);
+      if (imageWidth <= 0 ||
+          imageHeight <= 0 ||
+          imageWidth > 100000 ||
+          imageHeight > 100000) {
+        debugPrint('图片尺寸超出限制: $imageWidth x $imageHeight');
+        return null;
+      }
 
-    for (int y = 0; y < design.height; y++) {
-      for (int x = 0; x < design.width; x++) {
-        final bead = design.grid[y][x];
-        final startX = x * beadSize;
-        final startY = y * beadSize;
+      final image = img.Image(width: imageWidth, height: imageHeight);
 
-        if (bead != null) {
-          final beadColor = img.ColorRgba8(bead.red, bead.green, bead.blue, 255);
-          img.fillRect(
-            image,
-            x1: startX,
-            y1: startY,
-            x2: startX + beadSize - 1,
-            y2: startY + beadSize - 1,
-            color: beadColor,
-          );
-        }
+      final bgColor = img.ColorRgba8(
+        (backgroundColor.r * 255.0).round().clamp(0, 255),
+        (backgroundColor.g * 255.0).round().clamp(0, 255),
+        (backgroundColor.b * 255.0).round().clamp(0, 255),
+        (backgroundColor.a * 255.0).round().clamp(0, 255),
+      );
+      img.fill(image, color: bgColor);
 
-        if (showGrid) {
-          final gridColor = img.ColorRgba8(200, 200, 200, 255);
-          img.drawRect(
-            image,
-            x1: startX,
-            y1: startY,
-            x2: startX + beadSize - 1,
-            y2: startY + beadSize - 1,
-            color: gridColor,
-          );
+      for (int y = 0; y < design.height; y++) {
+        for (int x = 0; x < design.width; x++) {
+          if (y >= design.grid.length || x >= design.grid[y].length) continue;
+
+          final bead = design.grid[y][x];
+          final startX = x * beadSize;
+          final startY = y * beadSize;
+
+          if (bead != null) {
+            final beadColor = img.ColorRgba8(
+              bead.red.clamp(0, 255),
+              bead.green.clamp(0, 255),
+              bead.blue.clamp(0, 255),
+              255,
+            );
+            img.fillRect(
+              image,
+              x1: startX,
+              y1: startY,
+              x2: startX + beadSize - 1,
+              y2: startY + beadSize - 1,
+              color: beadColor,
+            );
+          }
+
+          if (showGrid) {
+            final gridColor = img.ColorRgba8(200, 200, 200, 255);
+            img.drawRect(
+              image,
+              x1: startX,
+              y1: startY,
+              x2: startX + beadSize - 1,
+              y2: startY + beadSize - 1,
+              color: gridColor,
+            );
+          }
         }
       }
-    }
 
-    return Uint8List.fromList(img.encodePng(image, level: 9));
+      return Uint8List.fromList(img.encodePng(image, level: 9));
+    } catch (e) {
+      debugPrint('生成设计图片失败: $e');
+      return null;
+    }
   }
 
   static Future<ExportResult> _exportMaterialListCsv(
@@ -234,18 +269,14 @@ class ExportService {
         final count = entry.value;
         final percentage = (count / totalBeads * 100).toStringAsFixed(2);
 
-        rows.add([
-          color.code,
-          color.name,
-          color.hexCode,
-          count,
-          percentage,
-        ]);
+        rows.add([color.code, color.name, color.hexCode, count, percentage]);
       }
 
       final csvData = const ListToCsvConverter().convert(rows);
 
-      final filePath = customPath ?? await _getSavePath('${design.name}_材料清单.csv', 'CSV 文件', 'csv');
+      final filePath =
+          customPath ??
+          await _getSavePath('${design.name}_材料清单.csv', 'CSV 文件', 'csv');
       if (filePath == null) {
         return ExportResult.failure('未选择保存位置');
       }

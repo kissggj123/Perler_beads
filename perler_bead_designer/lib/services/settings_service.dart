@@ -5,6 +5,118 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 
+enum PresetThemeType {
+  defaultPink,
+  oceanBlue,
+  forestGreen,
+  sunsetOrange,
+  lavender,
+  darkMode,
+  lightMode,
+  eyeCare,
+  highContrast,
+}
+
+class ThemeColors {
+  final Color primaryColor;
+  final Color secondaryColor;
+  final Color accentColor;
+  final String name;
+
+  const ThemeColors({
+    required this.primaryColor,
+    required this.secondaryColor,
+    required this.accentColor,
+    required this.name,
+  });
+
+  factory ThemeColors.fromJson(Map<String, dynamic> json) {
+    return ThemeColors(
+      primaryColor: Color(json['primaryColor'] as int),
+      secondaryColor: Color(json['secondaryColor'] as int),
+      accentColor: Color(json['accentColor'] as int),
+      name: json['name'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'primaryColor': primaryColor.toARGB32(),
+      'secondaryColor': secondaryColor.toARGB32(),
+      'accentColor': accentColor.toARGB32(),
+      'name': name,
+    };
+  }
+
+  static ThemeColors fromPreset(PresetThemeType preset) {
+    switch (preset) {
+      case PresetThemeType.defaultPink:
+        return const ThemeColors(
+          primaryColor: Color(0xFFE91E63),
+          secondaryColor: Color(0xFFEC407A),
+          accentColor: Color(0xFFF48FB1),
+          name: '默认粉色',
+        );
+      case PresetThemeType.oceanBlue:
+        return const ThemeColors(
+          primaryColor: Color(0xFF2196F3),
+          secondaryColor: Color(0xFF42A5F5),
+          accentColor: Color(0xFF90CAF9),
+          name: '海洋蓝',
+        );
+      case PresetThemeType.forestGreen:
+        return const ThemeColors(
+          primaryColor: Color(0xFF4CAF50),
+          secondaryColor: Color(0xFF66BB6A),
+          accentColor: Color(0xFFA5D6A7),
+          name: '森林绿',
+        );
+      case PresetThemeType.sunsetOrange:
+        return const ThemeColors(
+          primaryColor: Color(0xFFFF9800),
+          secondaryColor: Color(0xFFFFB74D),
+          accentColor: Color(0xFFFFCC80),
+          name: '日落橙',
+        );
+      case PresetThemeType.lavender:
+        return const ThemeColors(
+          primaryColor: Color(0xFF9C27B0),
+          secondaryColor: Color(0xFFBA68C8),
+          accentColor: Color(0xFFCE93D8),
+          name: '薰衣草',
+        );
+      case PresetThemeType.darkMode:
+        return const ThemeColors(
+          primaryColor: Color(0xFF6750A4),
+          secondaryColor: Color(0xFF9A82DB),
+          accentColor: Color(0xFFD0BCFF),
+          name: '深色模式',
+        );
+      case PresetThemeType.lightMode:
+        return const ThemeColors(
+          primaryColor: Color(0xFF6750A4),
+          secondaryColor: Color(0xFF625B71),
+          accentColor: Color(0xFF7D5260),
+          name: '浅色模式',
+        );
+      case PresetThemeType.eyeCare:
+        return const ThemeColors(
+          primaryColor: Color(0xFF8D6E63),
+          secondaryColor: Color(0xFFA1887F),
+          accentColor: Color(0xFFBCAAA4),
+          name: '护眼模式',
+        );
+      case PresetThemeType.highContrast:
+        return const ThemeColors(
+          primaryColor: Color(0xFF000000),
+          secondaryColor: Color(0xFF333333),
+          accentColor: Color(0xFF666666),
+          name: '高对比度',
+        );
+    }
+  }
+}
+
 class SettingsService {
   static const String _themeModeKey = 'theme_mode';
   static const String _defaultPaletteKey = 'default_palette';
@@ -38,6 +150,14 @@ class SettingsService {
   static const String _easterEggDiscoveredKey = 'easter_egg_discovered';
   static const String _debugOverlayEnabledKey = 'debug_overlay_enabled';
   static const String _showBead3DEffectKey = 'show_bead_3d_effect';
+  static const String _themeColorsKey = 'theme_colors';
+  static const String _presetThemeKey = 'preset_theme';
+  static const String _savedColorSchemesKey = 'saved_color_schemes';
+  static const String _cellSizeKey = 'cell_size';
+  static const String _gridColorKey = 'grid_color';
+  static const String _coordinateFontSizeKey = 'coordinate_font_size';
+  static const String _autoSaveIntervalKey = 'auto_save_interval';
+  static const String _maxHistorySizeKey = 'max_history_size';
 
   SharedPreferences? _prefs;
 
@@ -385,5 +505,116 @@ class SettingsService {
 
   Future<void> setShowBead3DEffect(bool value) async {
     await prefs.setBool(_showBead3DEffectKey, value);
+  }
+
+  ThemeColors getThemeColors() {
+    final themeColorsJson = prefs.getString(_themeColorsKey);
+    if (themeColorsJson == null) {
+      return ThemeColors.fromPreset(PresetThemeType.defaultPink);
+    }
+    try {
+      return ThemeColors.fromJson(
+        jsonDecode(themeColorsJson) as Map<String, dynamic>,
+      );
+    } catch (e) {
+      return ThemeColors.fromPreset(PresetThemeType.defaultPink);
+    }
+  }
+
+  Future<void> setThemeColors(ThemeColors colors) async {
+    final jsonString = jsonEncode(colors.toJson());
+    await prefs.setString(_themeColorsKey, jsonString);
+  }
+
+  PresetThemeType getPresetTheme() {
+    final presetString = prefs.getString(_presetThemeKey);
+    if (presetString == null) {
+      return PresetThemeType.defaultPink;
+    }
+    try {
+      return PresetThemeType.values.firstWhere(
+        (e) => e.name == presetString,
+        orElse: () => PresetThemeType.defaultPink,
+      );
+    } catch (e) {
+      return PresetThemeType.defaultPink;
+    }
+  }
+
+  Future<void> setPresetTheme(PresetThemeType preset) async {
+    await prefs.setString(_presetThemeKey, preset.name);
+  }
+
+  List<ThemeColors> getSavedColorSchemes() {
+    final schemesJson = prefs.getString(_savedColorSchemesKey);
+    if (schemesJson == null) return [];
+    try {
+      final List<dynamic> jsonList = jsonDecode(schemesJson) as List<dynamic>;
+      return jsonList
+          .map((json) => ThemeColors.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<void> setSavedColorSchemes(List<ThemeColors> schemes) async {
+    final jsonList = schemes.map((scheme) => scheme.toJson()).toList();
+    final jsonString = jsonEncode(jsonList);
+    await prefs.setString(_savedColorSchemesKey, jsonString);
+  }
+
+  Future<void> addSavedColorScheme(ThemeColors scheme) async {
+    final schemes = getSavedColorSchemes();
+    schemes.add(scheme);
+    await setSavedColorSchemes(schemes);
+  }
+
+  Future<void> removeSavedColorScheme(int index) async {
+    final schemes = getSavedColorSchemes();
+    if (index >= 0 && index < schemes.length) {
+      schemes.removeAt(index);
+      await setSavedColorSchemes(schemes);
+    }
+  }
+
+  double getCellSize() {
+    return prefs.getDouble(_cellSizeKey) ?? 20.0;
+  }
+
+  Future<void> setCellSize(double value) async {
+    await prefs.setDouble(_cellSizeKey, value);
+  }
+
+  String getGridColor() {
+    return prefs.getString(_gridColorKey) ?? '#9E9E9E';
+  }
+
+  Future<void> setGridColor(String value) async {
+    await prefs.setString(_gridColorKey, value);
+  }
+
+  double getCoordinateFontSize() {
+    return prefs.getDouble(_coordinateFontSizeKey) ?? -1;
+  }
+
+  Future<void> setCoordinateFontSize(double value) async {
+    await prefs.setDouble(_coordinateFontSizeKey, value);
+  }
+
+  int getAutoSaveInterval() {
+    return prefs.getInt(_autoSaveIntervalKey) ?? 30;
+  }
+
+  Future<void> setAutoSaveInterval(int value) async {
+    await prefs.setInt(_autoSaveIntervalKey, value);
+  }
+
+  int getMaxHistorySize() {
+    return prefs.getInt(_maxHistorySizeKey) ?? 50;
+  }
+
+  Future<void> setMaxHistorySize(int value) async {
+    await prefs.setInt(_maxHistorySizeKey, value);
   }
 }

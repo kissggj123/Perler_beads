@@ -15,7 +15,10 @@ import '../services/image_processing_service.dart'
         ColorAnalysisResult,
         GpuImageProcessor,
         AutoImageAdjustment,
-        ImageAnalyzer;
+        ImageAnalyzer,
+        BackgroundRemovalService,
+        BackgroundRemovalMode,
+        MaskEditTool;
 
 enum ProcessingState { idle, loading, processing, completed, error }
 
@@ -42,6 +45,8 @@ class RecommendedSize {
 
 class ImageProcessingProvider extends ChangeNotifier {
   final ImageProcessingService _service = ImageProcessingService();
+  final BackgroundRemovalService _backgroundRemovalService =
+      BackgroundRemovalService();
 
   File? _selectedFile;
   img.Image? _originalImage;
@@ -82,6 +87,17 @@ class ImageProcessingProvider extends ChangeNotifier {
   AutoImageAdjustment? _autoAdjustment;
   bool _isAnalyzing = false;
   String? _autoAdjustDescription;
+
+  bool _backgroundRemovalEnabled = false;
+  BackgroundRemovalMode _backgroundRemovalMode = BackgroundRemovalMode.auto;
+  double _backgroundRemovalTolerance = 30.0;
+  List<List<bool>>? _backgroundMask;
+  img.Image? _backgroundRemovedImage;
+  ui.Image? _flutterBackgroundRemovedImage;
+  bool _isRemovingBackground = false;
+  double _backgroundRemovalConfidence = 0.0;
+  MaskEditTool _currentMaskEditTool = MaskEditTool.brush;
+  int _maskEditBrushSize = 20;
 
   File? get selectedFile => _selectedFile;
   img.Image? get originalImage => _originalImage;
@@ -127,6 +143,20 @@ class ImageProcessingProvider extends ChangeNotifier {
   String? get autoAdjustDescription => _autoAdjustDescription;
   bool get isGpuAvailable => GpuImageProcessor.isGpuAvailable;
 
+  bool get backgroundRemovalEnabled => _backgroundRemovalEnabled;
+  BackgroundRemovalMode get backgroundRemovalMode => _backgroundRemovalMode;
+  double get backgroundRemovalTolerance => _backgroundRemovalTolerance;
+  List<List<bool>>? get backgroundMask => _backgroundMask;
+  img.Image? get backgroundRemovedImage => _backgroundRemovedImage;
+  ui.Image? get flutterBackgroundRemovedImage => _flutterBackgroundRemovedImage;
+  bool get isRemovingBackground => _isRemovingBackground;
+  double get backgroundRemovalConfidence => _backgroundRemovalConfidence;
+  MaskEditTool get currentMaskEditTool => _currentMaskEditTool;
+  int get maskEditBrushSize => _maskEditBrushSize;
+  String? get backgroundRemovalDescription => _backgroundRemovalDescription;
+
+  String? _backgroundRemovalDescription;
+
   Future<void> selectImage() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -135,7 +165,12 @@ class ImageProcessingProvider extends ChangeNotifier {
       );
 
       if (result != null && result.files.isNotEmpty) {
-        final file = File(result.files.first.path!);
+        final filePath = result.files.first.path;
+        if (filePath == null) {
+          _setError('无法获取文件路径');
+          return;
+        }
+        final file = File(filePath);
         await _loadImageFile(file);
       }
     } catch (e) {
@@ -153,6 +188,11 @@ class ImageProcessingProvider extends ChangeNotifier {
     _warningMessage = null;
 
     try {
+      if (!await file.exists()) {
+        _setError('文件不存在');
+        return;
+      }
+
       final loadResult = await _service.loadImageWithResize(file);
 
       if (loadResult == null) {
@@ -168,6 +208,11 @@ class ImageProcessingProvider extends ChangeNotifier {
       if (loadResult.wasResized) {
         _warningMessage =
             '图片已自动缩放: ${loadResult.originalWidth}x${loadResult.originalHeight} → ${loadResult.image.width}x${loadResult.image.height}';
+      }
+
+      if (_originalImage == null) {
+        _setError('图片加载失败');
+        return;
       }
 
       _originalAspectRatio = _originalImage!.width / _originalImage!.height;
@@ -194,8 +239,13 @@ class ImageProcessingProvider extends ChangeNotifier {
     if (_originalImage == null) return;
 
     try {
+      var sourceImage =
+          _backgroundRemovalEnabled && _backgroundRemovedImage != null
+          ? _backgroundRemovedImage!
+          : _originalImage!;
+
       var processedImage = _service.applyImageAdjustments(
-        _originalImage!,
+        sourceImage,
         brightness: _brightness,
         contrast: _contrast,
         saturation: _saturation,
@@ -214,13 +264,22 @@ class ImageProcessingProvider extends ChangeNotifier {
         );
       }
 
+      if (_outputWidth <= 0 || _outputHeight <= 0) {
+        debugPrint('无效的输出尺寸: $_outputWidth x $_outputHeight');
+        return;
+      }
+
       _previewImage = _service.pixelateImage(
         processedImage,
         _outputWidth,
         _outputHeight,
       );
 
-      _flutterPreviewImage = await _service.imageToFlutterImage(_previewImage!);
+      if (_previewImage != null) {
+        _flutterPreviewImage = await _service.imageToFlutterImage(
+          _previewImage!,
+        );
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('Error generating preview: $e');
@@ -240,8 +299,13 @@ class ImageProcessingProvider extends ChangeNotifier {
     _progress = 0.0;
 
     try {
+      var sourceImage =
+          _backgroundRemovalEnabled && _backgroundRemovedImage != null
+          ? _backgroundRemovedImage!
+          : _originalImage!;
+
       var processedImage = _service.applyImageAdjustments(
-        _originalImage!,
+        sourceImage,
         brightness: _brightness,
         contrast: _contrast,
         saturation: _saturation,
@@ -690,6 +754,214 @@ class ImageProcessingProvider extends ChangeNotifier {
       },
       'imageSize': '$_originalImageWidth x $_originalImageHeight',
       'outputSize': '$_outputWidth x $_outputHeight',
+      'backgroundRemovalEnabled': _backgroundRemovalEnabled,
+      'backgroundRemovalConfidence': _backgroundRemovalConfidence,
     };
+  }
+
+  void setBackgroundRemovalEnabled(bool enable) {
+    _backgroundRemovalEnabled = enable;
+    if (enable && _originalImage != null && _backgroundMask == null) {
+      performBackgroundRemoval();
+    } else if (!enable) {
+      _backgroundMask = null;
+      _backgroundRemovedImage = null;
+      _flutterBackgroundRemovedImage = null;
+      _backgroundRemovalConfidence = 0.0;
+    }
+    _generatePreview();
+    notifyListeners();
+  }
+
+  void setBackgroundRemovalMode(BackgroundRemovalMode mode) {
+    _backgroundRemovalMode = mode;
+    if (_backgroundRemovalEnabled && _originalImage != null) {
+      performBackgroundRemoval();
+    }
+    notifyListeners();
+  }
+
+  void setBackgroundRemovalTolerance(double tolerance) {
+    _backgroundRemovalTolerance = tolerance.clamp(1.0, 100.0);
+    notifyListeners();
+  }
+
+  void setMaskEditTool(MaskEditTool tool) {
+    _currentMaskEditTool = tool;
+    notifyListeners();
+  }
+
+  void setMaskEditBrushSize(int size) {
+    _maskEditBrushSize = size.clamp(5, 100);
+    notifyListeners();
+  }
+
+  Future<void> performBackgroundRemoval() async {
+    if (_originalImage == null) return;
+
+    _isRemovingBackground = true;
+    notifyListeners();
+
+    try {
+      final result = await _backgroundRemovalService.removeBackground(
+        _originalImage!,
+        mode: _backgroundRemovalMode,
+        tolerance: _backgroundRemovalTolerance,
+        existingMask: _backgroundMask,
+      );
+
+      if (result != null) {
+        _backgroundMask = result.mask;
+        _backgroundRemovedImage = result.image;
+        _backgroundRemovalConfidence = result.confidence;
+        _backgroundRemovalDescription = result.description;
+
+        _flutterBackgroundRemovedImage = await _service.imageToFlutterImage(
+          _backgroundRemovedImage!,
+        );
+
+        await _generatePreview();
+      }
+    } catch (e) {
+      debugPrint('Background removal failed: $e');
+      _setError('抠图失败: $e');
+    } finally {
+      _isRemovingBackground = false;
+      notifyListeners();
+    }
+  }
+
+  void editMaskAtPoint(int x, int y) {
+    if (_backgroundMask == null || _originalImage == null) return;
+
+    _backgroundMask = _backgroundRemovalService.editMask(
+      _backgroundMask!,
+      x,
+      y,
+      _maskEditBrushSize,
+      _currentMaskEditTool,
+      tolerance: _backgroundRemovalTolerance,
+      image: _originalImage,
+    );
+
+    _applyMaskToImage();
+    notifyListeners();
+  }
+
+  void _applyMaskToImage() {
+    if (_backgroundMask == null || _originalImage == null) return;
+
+    _backgroundRemovedImage = _applyMaskToImageDirect(
+      _originalImage!,
+      _backgroundMask!,
+    );
+    _updateFlutterBackgroundRemovedImage();
+  }
+
+  img.Image _applyMaskToImageDirect(img.Image image, List<List<bool>> mask) {
+    final result = img.Image(width: image.width, height: image.height);
+
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+
+        if (y < mask.length && x < mask[0].length && mask[y][x]) {
+          result.setPixel(
+            x,
+            y,
+            img.ColorRgba8(
+              pixel.r.toInt(),
+              pixel.g.toInt(),
+              pixel.b.toInt(),
+              0,
+            ),
+          );
+        } else {
+          result.setPixel(
+            x,
+            y,
+            img.ColorRgba8(
+              pixel.r.toInt(),
+              pixel.g.toInt(),
+              pixel.b.toInt(),
+              pixel.a.toInt(),
+            ),
+          );
+        }
+      }
+    }
+
+    return result;
+  }
+
+  Future<void> _updateFlutterBackgroundRemovedImage() async {
+    if (_backgroundRemovedImage != null) {
+      _flutterBackgroundRemovedImage = await _service.imageToFlutterImage(
+        _backgroundRemovedImage!,
+      );
+    }
+  }
+
+  void invertMask() {
+    if (_backgroundMask == null) return;
+
+    _backgroundMask = _backgroundRemovalService.invertMask(_backgroundMask!);
+    _applyMaskToImage();
+    notifyListeners();
+  }
+
+  void dilateMask() {
+    if (_backgroundMask == null) return;
+
+    _backgroundMask = _backgroundRemovalService.dilateMask(_backgroundMask!, 1);
+    _applyMaskToImage();
+    notifyListeners();
+  }
+
+  void erodeMask() {
+    if (_backgroundMask == null) return;
+
+    _backgroundMask = _backgroundRemovalService.erodeMask(_backgroundMask!, 1);
+    _applyMaskToImage();
+    notifyListeners();
+  }
+
+  void smoothMask() {
+    if (_backgroundMask == null || _originalImage == null) return;
+
+    _backgroundMask = _backgroundRemovalService.dilateMask(_backgroundMask!, 1);
+    _backgroundMask = _backgroundRemovalService.erodeMask(_backgroundMask!, 1);
+    _applyMaskToImage();
+    notifyListeners();
+  }
+
+  void clearMask() {
+    if (_originalImage == null) return;
+
+    _backgroundMask = List.generate(
+      _originalImage!.height,
+      (_) => List.filled(_originalImage!.width, false),
+    );
+    _backgroundRemovedImage = _originalImage;
+    _updateFlutterBackgroundRemovedImage();
+    notifyListeners();
+  }
+
+  void resetMask() {
+    _backgroundMask = null;
+    _backgroundRemovedImage = null;
+    _flutterBackgroundRemovedImage = null;
+    _backgroundRemovalConfidence = 0.0;
+    if (_backgroundRemovalEnabled) {
+      performBackgroundRemoval();
+    }
+    notifyListeners();
+  }
+
+  img.Image? getEffectiveImage() {
+    if (_backgroundRemovalEnabled && _backgroundRemovedImage != null) {
+      return _backgroundRemovedImage;
+    }
+    return _originalImage;
   }
 }

@@ -1,16 +1,21 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/app_provider.dart';
+import '../providers/design_editor_provider.dart';
 import '../services/data_export_service.dart';
 import '../services/design_storage_service.dart';
 import '../services/performance_service.dart';
 import '../services/settings_service.dart';
 import '../services/storage_service.dart';
+import '../services/version_check_service.dart';
 import '../widgets/performance_monitor.dart';
+import '../widgets/theme_color_picker.dart';
+import '../widgets/update_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -22,7 +27,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen>
     with SingleTickerProviderStateMixin {
   static const String appName = '兔可可的拼豆世界';
-  static const String appVersion = '2.0.5';
+  static const String appVersion = '2.1.2';
   static const String developer = 'BunnyCC';
   static const String copyright =
       'Copyright © 2026 BunnyCC. All rights reserved.';
@@ -33,6 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   int _defaultCanvasHeight = 29;
   int _lowStockThreshold = 50;
   String _defaultExportFormat = 'png';
+  int _autoSaveInterval = 30;
+  int _maxHistorySize = 50;
 
   final PerformanceService _performanceService = PerformanceService();
   bool _showPerformanceMonitor = false;
@@ -84,6 +91,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           _defaultCanvasHeight = settingsService.getDefaultCanvasHeight();
           _lowStockThreshold = settingsService.getLowStockThreshold();
           _defaultExportFormat = settingsService.getDefaultExportFormat();
+          _autoSaveInterval = settingsService.getAutoSaveInterval();
+          _maxHistorySize = settingsService.getMaxHistorySize();
         });
       }
     } catch (e) {
@@ -125,7 +134,13 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 24),
             _buildAnimationSection(context),
             const SizedBox(height: 24),
+            _buildPerformanceSection(context),
+            const SizedBox(height: 24),
             _buildCustomizationSection(context),
+            const SizedBox(height: 24),
+            _buildEditorSection(context),
+            const SizedBox(height: 24),
+            _buildShortcutSection(context),
             const SizedBox(height: 24),
             _buildExportSection(context),
             const SizedBox(height: 24),
@@ -190,7 +205,84 @@ class _SettingsScreenState extends State<SettingsScreen>
             },
           ),
         ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.color_lens, color: colorScheme.primary),
+          title: const Text('主题配色'),
+          subtitle: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 16,
+                height: 16,
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(
+                  color: appProvider.themeColors.primaryColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Container(
+                width: 16,
+                height: 16,
+                margin: const EdgeInsets.only(right: 4),
+                decoration: BoxDecoration(
+                  color: appProvider.themeColors.secondaryColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Container(
+                width: 16,
+                height: 16,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: appProvider.themeColors.accentColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Text(appProvider.themeColors.name),
+              if (appProvider.isCustomTheme) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '自定义',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _navigateToThemeColorPicker(context),
+        ),
+        const Divider(),
+        SwitchListTile(
+          secondary: Icon(Icons.view_sidebar, color: colorScheme.secondary),
+          title: const Text('侧边栏自动折叠'),
+          subtitle: const Text('窗口缩小时自动折叠侧边栏'),
+          value: appProvider.sidebarAutoCollapse,
+          onChanged: (value) {
+            appProvider.setSidebarAutoCollapse(value);
+          },
+        ),
       ],
+    );
+  }
+
+  void _navigateToThemeColorPicker(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ThemeColorPickerScreen()),
     );
   }
 
@@ -266,6 +358,156 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       ],
     );
+  }
+
+  Widget _buildPerformanceSection(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _SettingsCard(
+      title: '性能设置',
+      icon: Icons.speed,
+      children: [
+        SwitchListTile(
+          secondary: Icon(Icons.memory, color: colorScheme.primary),
+          title: const Text('GPU 加速'),
+          subtitle: Text(
+            _performanceService.config.enableGpuAcceleration
+                ? '已启用 - ${PerformanceService.getPlatformDefaultBackend()}'
+                : '已禁用',
+          ),
+          value: _performanceService.config.enableGpuAcceleration,
+          onChanged: (value) async {
+            try {
+              await _performanceService.setEnableGpuAcceleration(value);
+              setState(() {});
+            } catch (e) {
+              debugPrint('Error setting GPU acceleration: $e');
+            }
+          },
+        ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.video_settings, color: colorScheme.secondary),
+          title: const Text('FPS 限制'),
+          subtitle: Text(_performanceService.config.fpsLimit.label),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showFpsLimitDialog(context),
+        ),
+        ListTile(
+          leading: Icon(Icons.storage, color: colorScheme.tertiary),
+          title: const Text('缓存大小'),
+          subtitle: Text(_performanceService.config.cacheSize.label),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showCacheSizeDialog(context),
+        ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.info_outline, color: colorScheme.primary),
+          title: const Text('渲染引擎'),
+          subtitle: Text(PerformanceService.getImpellerStatus()),
+        ),
+      ],
+    );
+  }
+
+  void _showFpsLimitDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('FPS 限制'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: FpsLimit.values.map((limit) {
+            return RadioListTile<FpsLimit>(
+              title: Text(limit.label),
+              subtitle: Text(_getFpsLimitDescription(limit)),
+              value: limit,
+              groupValue: _performanceService.config.fpsLimit,
+              onChanged: (value) async {
+                if (value != null) {
+                  try {
+                    await _performanceService.setFpsLimit(value);
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  } catch (e) {
+                    debugPrint('Error setting FPS limit: $e');
+                  }
+                }
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getFpsLimitDescription(FpsLimit limit) {
+    return switch (limit) {
+      FpsLimit.fps30 => '适合电池供电或老旧设备',
+      FpsLimit.fps60 => '推荐设置，流畅体验',
+      FpsLimit.fps120 => '适合高刷新率显示器',
+      FpsLimit.unlimited => '不限制帧率（可能增加功耗）',
+    };
+  }
+
+  void _showCacheSizeDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('缓存大小'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: CacheSize.values.map((size) {
+            return RadioListTile<CacheSize>(
+              title: Text(size.label),
+              subtitle: Text(_getCacheSizeDescription(size)),
+              value: size,
+              groupValue: _performanceService.config.cacheSize,
+              onChanged: (value) async {
+                if (value != null) {
+                  try {
+                    await _performanceService.setCacheSize(value);
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  } catch (e) {
+                    debugPrint('Error setting cache size: $e');
+                  }
+                }
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getCacheSizeDescription(CacheSize size) {
+    return switch (size) {
+      CacheSize.small => '适合内存较小的设备',
+      CacheSize.medium => '推荐设置，平衡性能与内存',
+      CacheSize.large => '适合内存充足的设备',
+      CacheSize.unlimited => '不限制缓存大小',
+    };
   }
 
   String _getPerformanceLevelLabel(PerformanceLevel level) {
@@ -346,6 +588,81 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         const Divider(),
         ListTile(
+          leading: Icon(Icons.grid_on, color: colorScheme.primary),
+          title: const Text('格子大小'),
+          subtitle: Text('当前: ${appProvider.cellSize.toStringAsFixed(1)}'),
+          trailing: SizedBox(
+            width: 150,
+            child: Slider(
+              value: appProvider.cellSize,
+              min: 10,
+              max: 50,
+              divisions: 40,
+              label: appProvider.cellSize.toStringAsFixed(1),
+              onChanged: (value) {
+                appProvider.setCellSizeImmediate(value);
+              },
+              onChangeEnd: (value) {
+                appProvider.setCellSize(value);
+              },
+            ),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.palette, color: colorScheme.secondary),
+          title: const Text('网格颜色'),
+          subtitle: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 20,
+                height: 20,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: _parseColor(appProvider.gridColor),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: colorScheme.outline),
+                ),
+              ),
+              Text(appProvider.gridColor),
+            ],
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showGridColorPicker(context, appProvider),
+        ),
+        ListTile(
+          leading: Icon(Icons.text_fields, color: colorScheme.tertiary),
+          title: const Text('坐标字体大小'),
+          subtitle: Text(
+            appProvider.coordinateFontSize > 0
+                ? '当前: ${appProvider.coordinateFontSize.toStringAsFixed(1)}'
+                : '自动: ${(appProvider.cellSize * 0.35).toStringAsFixed(1)} (格子大小 × 0.35)',
+          ),
+          trailing: SizedBox(
+            width: 150,
+            child: Slider(
+              value: appProvider.coordinateFontSize > 0
+                  ? appProvider.coordinateFontSize
+                  : appProvider.cellSize * 0.35,
+              min: 4,
+              max: 20,
+              divisions: 32,
+              label:
+                  (appProvider.coordinateFontSize > 0
+                          ? appProvider.coordinateFontSize
+                          : appProvider.cellSize * 0.35)
+                      .toStringAsFixed(1),
+              onChanged: (value) {
+                appProvider.setCoordinateFontSizeImmediate(value);
+              },
+              onChangeEnd: (value) {
+                appProvider.setCoordinateFontSize(value);
+              },
+            ),
+          ),
+        ),
+        const Divider(),
+        ListTile(
           leading: Icon(Icons.grid_4x4, color: colorScheme.primary),
           title: const Text('默认画布尺寸'),
           subtitle: const Text('新建设计时的默认尺寸'),
@@ -367,6 +684,390 @@ class _SettingsScreenState extends State<SettingsScreen>
           onTap: () => _showExportFormatDialog(context),
         ),
       ],
+    );
+  }
+
+  Widget _buildEditorSection(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _SettingsCard(
+      title: '编辑器设置',
+      icon: Icons.edit_note,
+      children: [
+        ListTile(
+          leading: Icon(Icons.save, color: colorScheme.primary),
+          title: const Text('自动保存间隔'),
+          subtitle: const Text('自动保存设计的时间间隔'),
+          trailing: Text('$_autoSaveInterval 秒'),
+          onTap: () => _showAutoSaveIntervalDialog(context),
+        ),
+        ListTile(
+          leading: Icon(Icons.history, color: colorScheme.secondary),
+          title: const Text('历史记录数量'),
+          subtitle: const Text('可撤销/重做的最大步数'),
+          trailing: Text('$_maxHistorySize 步'),
+          onTap: () => _showMaxHistorySizeDialog(context),
+        ),
+      ],
+    );
+  }
+
+  void _showAutoSaveIntervalDialog(BuildContext context) {
+    final options = [10, 30, 60, 120];
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('自动保存间隔'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options.map((seconds) {
+            return RadioListTile<int>(
+              title: Text('$seconds 秒'),
+              value: seconds,
+              groupValue: _autoSaveInterval,
+              onChanged: (value) async {
+                if (value != null) {
+                  final settingsService = SettingsService();
+                  await settingsService.setAutoSaveInterval(value);
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext);
+                  }
+                  if (mounted) {
+                    setState(() {
+                      _autoSaveInterval = value;
+                    });
+                    final editorProvider = context.read<DesignEditorProvider>();
+                    editorProvider.setAutoSaveInterval(value);
+                  }
+                }
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMaxHistorySizeDialog(BuildContext context) {
+    final options = [10, 25, 50, 100];
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('历史记录数量'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options.map((size) {
+            return RadioListTile<int>(
+              title: Text('$size 步'),
+              value: size,
+              groupValue: _maxHistorySize,
+              onChanged: (value) async {
+                if (value != null) {
+                  final settingsService = SettingsService();
+                  await settingsService.setMaxHistorySize(value);
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext);
+                  }
+                  if (mounted) {
+                    setState(() {
+                      _maxHistorySize = value;
+                    });
+                    final editorProvider = context.read<DesignEditorProvider>();
+                    editorProvider.setMaxHistorySize(value);
+                  }
+                }
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShortcutSection(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final settingsService = SettingsService();
+    final isMacOS = Platform.isMacOS;
+
+    String getShortcutDisplay(String key, bool isCtrlShortcut) {
+      final savedKey =
+          settingsService.getStringSetting('shortcut_$key') ??
+          ShortcutSettings.getDefaults()[key]!;
+      if (isCtrlShortcut) {
+        final modifier = isMacOS ? 'Cmd' : 'Ctrl';
+        return '$modifier + $savedKey';
+      }
+      return savedKey;
+    }
+
+    String getRedoShortcutDisplay() {
+      final undoKey =
+          settingsService.getStringSetting('shortcut_undo') ??
+          ShortcutSettings.getDefaults()['undo']!;
+      final modifier = isMacOS ? 'Cmd' : 'Ctrl';
+      return '$modifier + Shift + $undoKey';
+    }
+
+    return _SettingsCard(
+      title: '快捷键设置',
+      icon: Icons.keyboard,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 16,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isMacOS
+                      ? 'macOS 使用 Cmd 键作为修饰键'
+                      : 'Windows/Linux 使用 Ctrl 键作为修饰键',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.undo, color: colorScheme.primary),
+          title: const Text('撤销'),
+          subtitle: Text('撤销上一步操作 (${getShortcutDisplay('undo', true)})'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('undo', true),
+            onTap: () => _showShortcutEditDialog(context, 'undo', '撤销', true),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.redo, color: colorScheme.secondary),
+          title: const Text('重做'),
+          subtitle: Text(
+            '重做已撤销的操作 ($getRedoShortcutDisplay 或 ${getShortcutDisplay('redo', true)})',
+          ),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('redo', true),
+            onTap: () => _showShortcutEditDialog(context, 'redo', '重做', true),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.save, color: colorScheme.tertiary),
+          title: const Text('保存'),
+          subtitle: Text('保存当前设计 (${getShortcutDisplay('save', true)})'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('save', true),
+            onTap: () => _showShortcutEditDialog(context, 'save', '保存', true),
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.arrow_upward, color: colorScheme.primary),
+          title: const Text('上移画布'),
+          subtitle: const Text('向上移动画布视图'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('moveUp', false),
+            onTap: () =>
+                _showShortcutEditDialog(context, 'moveUp', '上移画布', false),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.arrow_downward, color: colorScheme.secondary),
+          title: const Text('下移画布'),
+          subtitle: const Text('向下移动画布视图'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('moveDown', false),
+            onTap: () =>
+                _showShortcutEditDialog(context, 'moveDown', '下移画布', false),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.arrow_back, color: colorScheme.tertiary),
+          title: const Text('左移画布'),
+          subtitle: const Text('向左移动画布视图'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('moveLeft', false),
+            onTap: () =>
+                _showShortcutEditDialog(context, 'moveLeft', '左移画布', false),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.arrow_forward, color: colorScheme.primary),
+          title: const Text('右移画布'),
+          subtitle: const Text('向右移动画布视图'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('moveRight', false),
+            onTap: () =>
+                _showShortcutEditDialog(context, 'moveRight', '右移画布', false),
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.zoom_in, color: colorScheme.secondary),
+          title: const Text('放大'),
+          subtitle: const Text('放大画布视图'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('zoomIn', false),
+            onTap: () =>
+                _showShortcutEditDialog(context, 'zoomIn', '放大', false),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.zoom_out, color: colorScheme.tertiary),
+          title: const Text('缩小'),
+          subtitle: const Text('缩小画布视图'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('zoomOut', false),
+            onTap: () =>
+                _showShortcutEditDialog(context, 'zoomOut', '缩小', false),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.fit_screen, color: colorScheme.primary),
+          title: const Text('重置视图'),
+          subtitle: const Text('重置画布缩放和位置'),
+          trailing: _ShortcutKeyDisplay(
+            shortcutKey: getShortcutDisplay('resetView', false),
+            onTap: () =>
+                _showShortcutEditDialog(context, 'resetView', '重置视图', false),
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.restore, color: colorScheme.error),
+          title: const Text('重置所有快捷键'),
+          subtitle: const Text('恢复为默认快捷键设置'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showResetShortcutsDialog(context),
+        ),
+      ],
+    );
+  }
+
+  void _showShortcutEditDialog(
+    BuildContext context,
+    String shortcutKey,
+    String shortcutName,
+    bool isCtrlShortcut,
+  ) {
+    final settingsService = SettingsService();
+    final currentKey =
+        settingsService.getStringSetting('shortcut_$shortcutKey') ??
+        ShortcutSettings.getDefaults()[shortcutKey]!;
+    final isMacOS = Platform.isMacOS;
+    final modifier = isMacOS ? 'Cmd' : 'Ctrl';
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('设置 "$shortcutName" 快捷键'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '当前快捷键: ${isCtrlShortcut ? '$modifier + ' : ''}$currentKey',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            if (shortcutKey == 'undo') ...[
+              const SizedBox(height: 8),
+              Text(
+                '提示: 重做可使用 $modifier + Shift + $currentKey',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            const Text('点击下方输入框后按下新按键'),
+            const SizedBox(height: 16),
+            _ShortcutKeyInput(
+              currentKey: currentKey,
+              onKeyChanged: (newKey) {
+                Navigator.pop(dialogContext);
+                _saveShortcutKey(shortcutKey, newKey);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveShortcutKey(String shortcutKey, String newKey) async {
+    final settingsService = SettingsService();
+    await settingsService.setStringSetting('shortcut_$shortcutKey', newKey);
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('快捷键已保存')));
+    }
+  }
+
+  void _showResetShortcutsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('重置快捷键'),
+        content: const Text('确定要将所有快捷键恢复为默认值吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final settingsService = SettingsService();
+              final defaults = ShortcutSettings.getDefaults();
+              for (final entry in defaults.entries) {
+                await settingsService.setStringSetting(
+                  'shortcut_${entry.key}',
+                  entry.value,
+                );
+              }
+              if (dialogContext.mounted) {
+                Navigator.pop(dialogContext);
+              }
+              if (mounted) {
+                setState(() {});
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('快捷键已重置为默认值')));
+              }
+            },
+            child: const Text('重置'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -466,6 +1167,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   Widget _buildAboutSection(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final appProvider = context.watch<AppProvider>();
+    final versionCheckService = VersionCheckService();
 
     return _SettingsCard(
       title: '关于',
@@ -477,6 +1179,40 @@ class _SettingsScreenState extends State<SettingsScreen>
           subtitle: const Text(appName),
         ),
         _buildAnimatedVersionTile(context),
+        ListTile(
+          leading: Icon(Icons.system_update, color: colorScheme.tertiary),
+          title: const Text('检查更新'),
+          subtitle: FutureBuilder<DateTime?>(
+            future: Future.value(versionCheckService.getLastCheckTime()),
+            builder: (context, snapshot) {
+              if (snapshot.hasData && snapshot.data != null) {
+                final lastCheck = snapshot.data!;
+                final now = DateTime.now();
+                final difference = now.difference(lastCheck);
+                if (difference.inHours < 1) {
+                  return const Text('刚刚检查过');
+                } else if (difference.inHours < 24) {
+                  return Text('${difference.inHours} 小时前检查过');
+                } else {
+                  return Text('${difference.inDays} 天前检查过');
+                }
+              }
+              return const Text('从未检查过更新');
+            },
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => showUpdateCheckDialog(context),
+        ),
+        SwitchListTile(
+          secondary: Icon(Icons.update, color: colorScheme.primary),
+          title: const Text('自动检查更新'),
+          subtitle: const Text('应用启动时自动检查新版本'),
+          value: versionCheckService.shouldAutoCheck(),
+          onChanged: (value) async {
+            await versionCheckService.setAutoCheckEnabled(value);
+            setState(() {});
+          },
+        ),
         ListTile(
           leading: Icon(Icons.history, color: colorScheme.tertiary),
           title: const Text('更新日志'),
@@ -1356,6 +2092,188 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  Color _parseColor(String hexColor) {
+    try {
+      hexColor = hexColor.replaceAll('#', '');
+      if (hexColor.length == 6) {
+        hexColor = 'FF$hexColor';
+      }
+      return Color(int.parse(hexColor, radix: 16));
+    } catch (e) {
+      return Colors.grey;
+    }
+  }
+
+  void _showGridColorPicker(BuildContext context, AppProvider appProvider) {
+    final currentColor = _parseColor(appProvider.gridColor);
+    Color selectedColor = currentColor;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('选择网格颜色'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: selectedColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(dialogContext).colorScheme.outline,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildPresetColorChip(
+                      dialogContext,
+                      Colors.grey,
+                      '灰色',
+                      selectedColor,
+                      (color) {
+                        setDialogState(() {
+                          selectedColor = color;
+                        });
+                      },
+                    ),
+                    _buildPresetColorChip(
+                      dialogContext,
+                      Colors.black,
+                      '黑色',
+                      selectedColor,
+                      (color) {
+                        setDialogState(() {
+                          selectedColor = color;
+                        });
+                      },
+                    ),
+                    _buildPresetColorChip(
+                      dialogContext,
+                      Colors.blue,
+                      '蓝色',
+                      selectedColor,
+                      (color) {
+                        setDialogState(() {
+                          selectedColor = color;
+                        });
+                      },
+                    ),
+                    _buildPresetColorChip(
+                      dialogContext,
+                      Colors.red,
+                      '红色',
+                      selectedColor,
+                      (color) {
+                        setDialogState(() {
+                          selectedColor = color;
+                        });
+                      },
+                    ),
+                    _buildPresetColorChip(
+                      dialogContext,
+                      Colors.green,
+                      '绿色',
+                      selectedColor,
+                      (color) {
+                        setDialogState(() {
+                          selectedColor = color;
+                        });
+                      },
+                    ),
+                    _buildPresetColorChip(
+                      dialogContext,
+                      Colors.orange,
+                      '橙色',
+                      selectedColor,
+                      (color) {
+                        setDialogState(() {
+                          selectedColor = color;
+                        });
+                      },
+                    ),
+                    _buildPresetColorChip(
+                      dialogContext,
+                      Colors.purple,
+                      '紫色',
+                      selectedColor,
+                      (color) {
+                        setDialogState(() {
+                          selectedColor = color;
+                        });
+                      },
+                    ),
+                    _buildPresetColorChip(
+                      dialogContext,
+                      Colors.brown,
+                      '棕色',
+                      selectedColor,
+                      (color) {
+                        setDialogState(() {
+                          selectedColor = color;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final hexColor =
+                    '#${selectedColor.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+                appProvider.setGridColor(hexColor);
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPresetColorChip(
+    BuildContext context,
+    Color color,
+    String label,
+    Color selectedColor,
+    Function(Color) onSelected,
+  ) {
+    final isSelected = selectedColor.toARGB32() == color.toARGB32();
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          onSelected(color);
+        }
+      },
+      avatar: Container(
+        width: 16,
+        height: 16,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1),
+        ),
+      ),
+    );
+  }
+
   IconData _getThemeIcon(ThemeMode mode) {
     switch (mode) {
       case ThemeMode.system:
@@ -1504,41 +2422,58 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('默认导出格式'),
-        content: RadioGroup<String>(
-          groupValue: _defaultExportFormat,
-          onChanged: (value) async {
-            if (value != null) {
-              try {
-                final settingsService = SettingsService();
-                await settingsService.setDefaultExportFormat(value);
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext);
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<String>(
+              title: const Text('PNG'),
+              subtitle: const Text('适合屏幕显示和分享'),
+              value: 'png',
+              groupValue: _defaultExportFormat,
+              onChanged: (value) async {
+                if (value != null) {
+                  try {
+                    final settingsService = SettingsService();
+                    await settingsService.setDefaultExportFormat(value);
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                    if (mounted) {
+                      setState(() {
+                        _defaultExportFormat = value;
+                      });
+                    }
+                  } catch (e) {
+                    debugPrint('Error saving export format: $e');
+                  }
                 }
-                if (mounted) {
-                  setState(() {
-                    _defaultExportFormat = value;
-                  });
+              },
+            ),
+            RadioListTile<String>(
+              title: const Text('PDF'),
+              subtitle: const Text('适合打印输出'),
+              value: 'pdf',
+              groupValue: _defaultExportFormat,
+              onChanged: (value) async {
+                if (value != null) {
+                  try {
+                    final settingsService = SettingsService();
+                    await settingsService.setDefaultExportFormat(value);
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                    }
+                    if (mounted) {
+                      setState(() {
+                        _defaultExportFormat = value;
+                      });
+                    }
+                  } catch (e) {
+                    debugPrint('Error saving export format: $e');
+                  }
                 }
-              } catch (e) {
-                debugPrint('Error saving export format: $e');
-              }
-            }
-          },
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RadioListTile<String>(
-                title: const Text('PNG'),
-                subtitle: const Text('适合屏幕显示和分享'),
-                value: 'png',
-              ),
-              RadioListTile<String>(
-                title: const Text('PDF'),
-                subtitle: const Text('适合打印输出'),
-                value: 'pdf',
-              ),
-            ],
-          ),
+              },
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -2003,6 +2938,491 @@ class _ChangelogDialogState extends State<ChangelogDialog> {
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ShortcutKeyDisplay extends StatelessWidget {
+  final String shortcutKey;
+  final VoidCallback onTap;
+
+  const _ShortcutKeyDisplay({required this.shortcutKey, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              shortcutKey,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.edit,
+              size: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShortcutKeyInput extends StatefulWidget {
+  final String currentKey;
+  final Function(String) onKeyChanged;
+
+  const _ShortcutKeyInput({
+    required this.currentKey,
+    required this.onKeyChanged,
+  });
+
+  @override
+  State<_ShortcutKeyInput> createState() => _ShortcutKeyInputState();
+}
+
+class _ShortcutKeyInputState extends State<_ShortcutKeyInput> {
+  final FocusNode _focusNode = FocusNode();
+  late String _currentKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentKey = widget.currentKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return KeyboardListener(
+      focusNode: _focusNode,
+      onKeyEvent: (event) {
+        if (event is KeyDownEvent) {
+          final keyLabel = event.logicalKey.keyLabel;
+          if (keyLabel.isNotEmpty && keyLabel.length <= 2) {
+            setState(() {
+              _currentKey = keyLabel.toUpperCase();
+            });
+            widget.onKeyChanged(_currentKey);
+          }
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        decoration: BoxDecoration(
+          color: Theme.of(
+            context,
+          ).colorScheme.primaryContainer.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.primary,
+            width: 2,
+          ),
+        ),
+        child: Text(
+          _currentKey,
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+class ThemeColorEditorDialog extends StatefulWidget {
+  final ThemeColors initialColors;
+  final Function(ThemeColors) onApply;
+
+  const ThemeColorEditorDialog({
+    super.key,
+    required this.initialColors,
+    required this.onApply,
+  });
+
+  @override
+  State<ThemeColorEditorDialog> createState() => _ThemeColorEditorDialogState();
+}
+
+class _ThemeColorEditorDialogState extends State<ThemeColorEditorDialog> {
+  late Color _primaryColor;
+  late Color _secondaryColor;
+  late Color _accentColor;
+  late String _name;
+  final _nameController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _primaryColor = widget.initialColors.primaryColor;
+    _secondaryColor = widget.initialColors.secondaryColor;
+    _accentColor = widget.initialColors.accentColor;
+    _name = widget.initialColors.name;
+    _nameController.text = _name;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('自定义主题配色'),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: '配色方案名称',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) {
+                  _name = value;
+                },
+              ),
+              const SizedBox(height: 24),
+              _buildColorPicker(
+                '主色调',
+                _primaryColor,
+                (color) => setState(() => _primaryColor = color),
+              ),
+              const SizedBox(height: 16),
+              _buildColorPicker(
+                '次色调',
+                _secondaryColor,
+                (color) => setState(() => _secondaryColor = color),
+              ),
+              const SizedBox(height: 16),
+              _buildColorPicker(
+                '强调色',
+                _accentColor,
+                (color) => setState(() => _accentColor = color),
+              ),
+              const SizedBox(height: 24),
+              Text('预览', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              _buildPreview(),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () => _saveColorScheme(),
+          child: const Text('保存方案'),
+        ),
+        FilledButton(onPressed: _applyColors, child: const Text('应用')),
+      ],
+    );
+  }
+
+  Widget _buildColorPicker(
+    String label,
+    Color color,
+    Function(Color) onChanged,
+  ) {
+    return Row(
+      children: [
+        Expanded(child: Text(label)),
+        GestureDetector(
+          onTap: () => _showColorPickerDialog(color, onChanged),
+          child: Container(
+            width: 60,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Theme.of(context).colorScheme.outline),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showColorPickerDialog(Color initialColor, Function(Color) onChanged) {
+    Color tempColor = initialColor;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('选择颜色'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ColorPickerWidget(
+                initialColor: initialColor,
+                onColorChanged: (color) {
+                  tempColor = color;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              onChanged(tempColor);
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreview() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _primaryColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _secondaryColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _accentColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor),
+                  onPressed: () {},
+                  child: const Text('主按钮'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _primaryColor,
+                    side: BorderSide(color: _primaryColor),
+                  ),
+                  onPressed: () {},
+                  child: const Text('次按钮'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _applyColors() {
+    final colors = ThemeColors(
+      primaryColor: _primaryColor,
+      secondaryColor: _secondaryColor,
+      accentColor: _accentColor,
+      name: _nameController.text.isNotEmpty ? _nameController.text : '自定义主题',
+    );
+    widget.onApply(colors);
+    Navigator.pop(context);
+  }
+
+  void _saveColorScheme() {
+    final appProvider = context.read<AppProvider>();
+    final name = _nameController.text.isNotEmpty
+        ? _nameController.text
+        : '自定义方案 ${appProvider.savedColorSchemes.length + 1}';
+
+    appProvider.saveCurrentColorScheme(name);
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('配色方案已保存')));
+  }
+}
+
+class ColorPickerWidget extends StatefulWidget {
+  final Color initialColor;
+  final Function(Color) onColorChanged;
+
+  const ColorPickerWidget({
+    super.key,
+    required this.initialColor,
+    required this.onColorChanged,
+  });
+
+  @override
+  State<ColorPickerWidget> createState() => _ColorPickerWidgetState();
+}
+
+class _ColorPickerWidgetState extends State<ColorPickerWidget> {
+  late double _hue;
+  late double _saturation;
+  late double _value;
+
+  @override
+  void initState() {
+    super.initState();
+    final hsv = HSVColor.fromColor(widget.initialColor);
+    _hue = hsv.hue;
+    _saturation = hsv.saturation;
+    _value = hsv.value;
+  }
+
+  Color get currentColor =>
+      HSVColor.fromAHSV(1.0, _hue, _saturation, _value).toColor();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 200,
+          height: 200,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            gradient: SweepGradient(
+              center: Alignment.center,
+              colors: [
+                HSVColor.fromAHSV(1.0, 0, 1, 1).toColor(),
+                HSVColor.fromAHSV(1.0, 60, 1, 1).toColor(),
+                HSVColor.fromAHSV(1.0, 120, 1, 1).toColor(),
+                HSVColor.fromAHSV(1.0, 180, 1, 1).toColor(),
+                HSVColor.fromAHSV(1.0, 240, 1, 1).toColor(),
+                HSVColor.fromAHSV(1.0, 300, 1, 1).toColor(),
+                HSVColor.fromAHSV(1.0, 360, 1, 1).toColor(),
+              ],
+            ),
+          ),
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              final RenderBox box = context.findRenderObject() as RenderBox;
+              final localPosition = box.globalToLocal(details.globalPosition);
+              final centerX = box.size.width / 2;
+              final centerY = box.size.height / 2;
+              final dx = localPosition.dx - centerX;
+              final dy = localPosition.dy - centerY;
+
+              double angle = (atan2(dy, dx) * 180 / pi + 360) % 360;
+
+              setState(() {
+                _hue = angle.clamp(0.0, 360.0);
+                widget.onColorChanged(currentColor);
+              });
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const Text('饱和度'),
+            Expanded(
+              child: Slider(
+                value: _saturation,
+                onChanged: (value) {
+                  setState(() {
+                    _saturation = value;
+                    widget.onColorChanged(currentColor);
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            const Text('明度'),
+            Expanded(
+              child: Slider(
+                value: _value,
+                onChanged: (value) {
+                  setState(() {
+                    _value = value;
+                    widget.onColorChanged(currentColor);
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: 60,
+          height: 40,
+          decoration: BoxDecoration(
+            color: currentColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
+          ),
         ),
       ],
     );

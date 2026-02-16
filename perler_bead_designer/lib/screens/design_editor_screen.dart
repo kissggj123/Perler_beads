@@ -3,11 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../providers/design_editor_provider.dart';
+import '../providers/app_provider.dart';
 import '../widgets/bead_canvas_widget.dart';
 import '../widgets/color_picker_panel.dart';
 import '../widgets/bead_statistics_panel.dart';
 import '../widgets/tool_bar_widget.dart';
+import '../widgets/assembly_guide_widget.dart';
 import '../services/settings_service.dart';
+import '../services/gpu_animation_service.dart';
+import '../services/assembly_guide_service.dart';
+import '../utils/platform_utils.dart';
 
 class DesignEditorScreen extends StatelessWidget {
   final BeadDesign? initialDesign;
@@ -32,27 +37,54 @@ class _DesignEditorContent extends StatefulWidget {
   State<_DesignEditorContent> createState() => _DesignEditorContentState();
 }
 
-class _DesignEditorContentState extends State<_DesignEditorContent> {
+class _DesignEditorContentState extends State<_DesignEditorContent>
+    with TickerProviderStateMixin {
   final FocusNode _focusNode = FocusNode();
+  final AssemblyGuideService _assemblyService = AssemblyGuideService();
+  final GpuAnimationService _gpuAnimationService = GpuAnimationService();
+  bool _showAssemblyGuide = false;
+  late AnimationController _assemblyAnimationController;
 
   @override
   void initState() {
     super.initState();
+    _assemblyAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    )..addStatusListener(_onAssemblyAnimationStatus);
+    _gpuAnimationService.initialize();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeEditor();
       _focusNode.requestFocus();
     });
   }
 
+  void _onAssemblyAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && _assemblyService.isPlaying) {
+      _assemblyService.nextStep();
+      if (_assemblyService.isPlaying) {
+        _assemblyAnimationController.reset();
+        _assemblyAnimationController.forward();
+      }
+    }
+  }
+
   @override
   void dispose() {
     _focusNode.dispose();
+    _assemblyAnimationController.dispose();
+    _assemblyService.dispose();
+    final provider = context.read<DesignEditorProvider>();
+    provider.stopAutoSaveTimer();
     super.dispose();
   }
 
   void _initializeEditor() {
     final editorProvider = context.read<DesignEditorProvider>();
-    editorProvider.loadShortcutSettings(SettingsService());
+    final settingsService = SettingsService();
+    editorProvider.loadShortcutSettings(settingsService);
+    editorProvider.loadEditorSettings(settingsService);
+    editorProvider.startAutoSaveTimer();
     if (widget.initialDesign != null) {
       editorProvider.loadDesignDirect(widget.initialDesign!);
     } else {
@@ -65,8 +97,8 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
 
     final key = event.logicalKey;
     final keyLabel = key.keyLabel.toUpperCase();
-
     final shortcuts = provider.shortcutSettings;
+
     if (keyLabel == shortcuts.moveUp ||
         keyLabel == shortcuts.moveDown ||
         keyLabel == shortcuts.moveLeft ||
@@ -78,22 +110,52 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
       return;
     }
 
-    if (HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed) {
-      switch (key) {
-        case LogicalKeyboardKey.keyZ:
-          if (HardwareKeyboard.instance.isShiftPressed) {
-            provider.redo();
-          } else {
-            provider.undo();
-          }
-          break;
-        case LogicalKeyboardKey.keyY:
+    final isCtrlOrCmdPressed =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+
+    if (isCtrlOrCmdPressed) {
+      if (keyLabel == shortcuts.undo) {
+        if (isShiftPressed) {
           provider.redo();
-          break;
-        case LogicalKeyboardKey.keyS:
-          provider.saveDesign();
-          break;
+        } else {
+          provider.undo();
+        }
+        return;
+      }
+      if (keyLabel == shortcuts.redo) {
+        provider.redo();
+        return;
+      }
+      if (keyLabel == shortcuts.save) {
+        provider.saveDesign();
+        return;
+      }
+      if (keyLabel == 'C') {
+        if (provider.hasSelection) {
+          provider.copySelection();
+        } else {
+          provider.copyAll();
+        }
+        return;
+      }
+      if (keyLabel == 'V') {
+        if (provider.hasClipboard) {
+          provider.pasteToCenter();
+        }
+        return;
+      }
+      if (keyLabel == 'X') {
+        if (provider.hasSelection) {
+          provider.copySelection();
+          provider.deleteSelection();
+        }
+        return;
+      }
+      if (keyLabel == 'A') {
+        provider.selectAll();
+        return;
       }
     } else {
       switch (key) {
@@ -106,11 +168,23 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
         case LogicalKeyboardKey.keyF:
           provider.setToolMode(ToolMode.fill);
           break;
+        case LogicalKeyboardKey.keyS:
+          provider.setToolMode(ToolMode.select);
+          break;
         case LogicalKeyboardKey.keyG:
           provider.toggleGrid();
           break;
         case LogicalKeyboardKey.keyC:
           provider.toggleCoordinates();
+          break;
+        case LogicalKeyboardKey.delete:
+        case LogicalKeyboardKey.backspace:
+          if (provider.hasSelection) {
+            provider.deleteSelection();
+          }
+          break;
+        case LogicalKeyboardKey.escape:
+          provider.clearSelection();
           break;
       }
     }
@@ -304,6 +378,8 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
                         ),
                       ),
                     ],
+                    const SizedBox(width: 8),
+                    _buildAutoSaveIndicator(context, provider),
                   ],
                 );
               },
@@ -320,6 +396,18 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
       builder: (context, provider, _) {
         return Row(
           children: [
+            IconButton(
+              icon: Icon(
+                Icons.view_in_ar,
+                color: _showAssemblyGuide
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
+              ),
+              onPressed: provider.hasDesign
+                  ? () => _toggleAssemblyGuide(provider)
+                  : null,
+              tooltip: '3D拼装动画',
+            ),
             IconButton(
               icon: const Icon(Icons.settings),
               onPressed: () => _showSettingsDialog(context, provider),
@@ -339,16 +427,36 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
                                 : Colors.red,
                           ),
                         );
+                        if (success) {
+                          _gpuAnimationService.emitCompletionParticles(
+                            position: Offset(
+                              MediaQuery.of(context).size.width / 2,
+                              100,
+                            ),
+                            color: Colors.green,
+                          );
+                        }
                       }
                     }
                   : null,
-              tooltip: '保存 (Ctrl+S)',
+              tooltip: '保存 (${PlatformUtils.ctrlKey}+S)',
             ),
             const SizedBox(width: 8),
           ],
         );
       },
     );
+  }
+
+  void _toggleAssemblyGuide(DesignEditorProvider provider) {
+    setState(() {
+      _showAssemblyGuide = !_showAssemblyGuide;
+      if (_showAssemblyGuide && provider.currentDesign != null) {
+        _assemblyService.generateAssemblySteps(provider.currentDesign!);
+      } else {
+        _assemblyService.stop();
+      }
+    });
   }
 
   Widget _buildMainContent(BuildContext context) {
@@ -364,8 +472,8 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
   Widget _buildCanvasArea(BuildContext context) {
     return Container(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
-      child: Consumer<DesignEditorProvider>(
-        builder: (context, provider, _) {
+      child: Consumer2<DesignEditorProvider, AppProvider>(
+        builder: (context, provider, appProvider, _) {
           if (!provider.hasDesign) {
             return Center(
               child: Column(
@@ -394,37 +502,116 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
             );
           }
 
-          return Column(
-            children: [
-              _buildCurrentColorIndicator(context, provider),
-              Expanded(
-                child: Center(
-                  child: BeadCanvasWidget(
-                    cellSize: _calculateCellSize(provider),
-                  ),
-                ),
-              ),
-              _buildZoomControls(context, provider),
-            ],
+          if (_showAssemblyGuide) {
+            return _buildAssemblyGuideView(context, provider, appProvider);
+          }
+
+          return ParticleOverlay(
+            enabled: appProvider.animationsEnabled,
+            child: Column(
+              children: [
+                _buildCurrentColorIndicator(context, provider),
+                Expanded(child: Center(child: BeadCanvasWidget())),
+                _buildZoomControls(context, provider),
+              ],
+            ),
           );
         },
       ),
     );
   }
 
-  double _calculateCellSize(DesignEditorProvider provider) {
-    final design = provider.currentDesign;
-    if (design == null) return 20.0;
+  Widget _buildAssemblyGuideView(
+    BuildContext context,
+    DesignEditorProvider provider,
+    AppProvider appProvider,
+  ) {
+    return AnimatedBuilder(
+      animation: _assemblyAnimationController,
+      builder: (context, _) {
+        return Column(
+          children: [
+            _buildAssemblyGuideHeader(context, provider),
+            Expanded(
+              child: AssemblyGuideWidget(
+                design: provider.currentDesign!,
+                cellSize: appProvider.cellSize,
+                currentStep: _assemblyService.currentStep,
+                isPlaying: _assemblyService.isPlaying,
+                animationSpeed: _assemblyService.animationSpeed,
+                showSameColorHint: _assemblyService.showSameColorHint,
+                onPlay: () {
+                  if (_assemblyService.currentStepIndex < 0) {
+                    _assemblyService.start();
+                  } else {
+                    _assemblyService.resume();
+                  }
+                  _assemblyAnimationController.reset();
+                  _assemblyAnimationController.forward();
+                },
+                onPause: () {
+                  _assemblyAnimationController.stop();
+                  _assemblyService.pause();
+                },
+                onReset: () {
+                  _assemblyAnimationController.reset();
+                  _assemblyService.reset();
+                },
+                onNextStep: () {
+                  _assemblyService.nextStep();
+                },
+                onPreviousStep: () {
+                  _assemblyService.previousStep();
+                },
+                onSpeedChanged: (speed) {
+                  _assemblyService.setAnimationSpeed(speed);
+                  _assemblyAnimationController.duration = Duration(
+                    milliseconds: (500 / speed).round(),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-    const minCellSize = 8.0;
-    const maxCellSize = 32.0;
-    const targetArea = 600.0;
-
-    final aspectRatio = design.width / design.height;
-    final height = (targetArea / aspectRatio).clamp(100.0, 800.0);
-    final cellSize = height / design.height;
-
-    return cellSize.clamp(minCellSize, maxCellSize);
+  Widget _buildAssemblyGuideHeader(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        border: Border(
+          bottom: BorderSide(color: Theme.of(context).dividerColor),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.view_in_ar,
+            color: Theme.of(context).colorScheme.onPrimaryContainer,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '3D拼装动画模式',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          TextButton.icon(
+            icon: const Icon(Icons.close),
+            label: const Text('退出'),
+            onPressed: () => _toggleAssemblyGuide(provider),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCurrentColorIndicator(
@@ -571,6 +758,64 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
     );
   }
 
+  Widget _buildAutoSaveIndicator(
+    BuildContext context,
+    DesignEditorProvider provider,
+  ) {
+    final isAutoSaving = provider.isAutoSaving;
+    final statusText = provider.getAutoSaveStatusText();
+    final autoSaveInterval = provider.autoSaveInterval;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isAutoSaving
+            ? Theme.of(context).colorScheme.tertiaryContainer
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isAutoSaving)
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Theme.of(context).colorScheme.onTertiaryContainer,
+              ),
+            )
+          else
+            Icon(
+              Icons.save_outlined,
+              size: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          const SizedBox(width: 6),
+          Text(
+            statusText,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: isAutoSaving
+                  ? Theme.of(context).colorScheme.onTertiaryContainer
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (autoSaveInterval > 0 && !isAutoSaving) ...[
+            const SizedBox(width: 4),
+            Text(
+              '(${autoSaveInterval}s)',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   String _getToolModeText(ToolMode mode) {
     switch (mode) {
       case ToolMode.draw:
@@ -579,6 +824,8 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
         return '擦除模式 (E)';
       case ToolMode.fill:
         return '填充模式 (F)';
+      case ToolMode.select:
+        return '选区模式 (S)';
     }
   }
 
@@ -597,7 +844,7 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            '快捷键: ${shortcuts.moveUp}${shortcuts.moveDown}${shortcuts.moveLeft}${shortcuts.moveRight}-移动 | ${shortcuts.zoomIn}/${shortcuts.zoomOut}-缩放 | ${shortcuts.resetView}-重置视图 | D-绘制 E-擦除 F-填充 G-网格 C-坐标 | Ctrl+Z-撤销 Ctrl+Y-重做 | 鼠标中键拖动-平移',
+            '快捷键: ${shortcuts.moveUp}${shortcuts.moveDown}${shortcuts.moveLeft}${shortcuts.moveRight}-移动 | ${shortcuts.zoomIn}/${shortcuts.zoomOut}-缩放 | ${shortcuts.resetView}-重置视图 | D-绘制 E-擦除 F-填充 S-选区 G-网格 C-坐标 | ${PlatformUtils.ctrlKey}+C-复制 ${PlatformUtils.ctrlKey}+V-粘贴 ${PlatformUtils.ctrlKey}+X-剪切 ${PlatformUtils.ctrlKey}+A-全选 | ${PlatformUtils.ctrlKey}+${shortcuts.undo}-撤销 ${PlatformUtils.ctrlKey}+${shortcuts.redo}-重做 ${PlatformUtils.ctrlKey}+${shortcuts.save}-保存 | 鼠标中键拖动-平移',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -712,6 +959,9 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
   ) {
     final currentSettings = provider.shortcutSettings;
     final controllers = {
+      'undo': TextEditingController(text: currentSettings.undo),
+      'redo': TextEditingController(text: currentSettings.redo),
+      'save': TextEditingController(text: currentSettings.save),
       'moveUp': TextEditingController(text: currentSettings.moveUp),
       'moveDown': TextEditingController(text: currentSettings.moveDown),
       'moveLeft': TextEditingController(text: currentSettings.moveLeft),
@@ -727,23 +977,47 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
         title: const Text('快捷键设置'),
         content: SizedBox(
           width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('点击输入框后按下新按键即可更改快捷键'),
-              const SizedBox(height: 16),
-              _buildShortcutRow(dialogContext, '上移', controllers['moveUp']!),
-              _buildShortcutRow(dialogContext, '下移', controllers['moveDown']!),
-              _buildShortcutRow(dialogContext, '左移', controllers['moveLeft']!),
-              _buildShortcutRow(dialogContext, '右移', controllers['moveRight']!),
-              _buildShortcutRow(dialogContext, '放大', controllers['zoomIn']!),
-              _buildShortcutRow(dialogContext, '缩小', controllers['zoomOut']!),
-              _buildShortcutRow(
-                dialogContext,
-                '重置视图',
-                controllers['resetView']!,
-              ),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('点击输入框后按下新按键即可更改快捷键'),
+                const SizedBox(height: 8),
+                Text(
+                  '撤销/重做/保存需要配合 ${PlatformUtils.ctrlKey} 使用',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                _buildShortcutRow(dialogContext, '撤销', controllers['undo']!),
+                _buildShortcutRow(dialogContext, '重做', controllers['redo']!),
+                _buildShortcutRow(dialogContext, '保存', controllers['save']!),
+                const Divider(),
+                _buildShortcutRow(dialogContext, '上移', controllers['moveUp']!),
+                _buildShortcutRow(
+                  dialogContext,
+                  '下移',
+                  controllers['moveDown']!,
+                ),
+                _buildShortcutRow(
+                  dialogContext,
+                  '左移',
+                  controllers['moveLeft']!,
+                ),
+                _buildShortcutRow(
+                  dialogContext,
+                  '右移',
+                  controllers['moveRight']!,
+                ),
+                const Divider(),
+                _buildShortcutRow(dialogContext, '放大', controllers['zoomIn']!),
+                _buildShortcutRow(dialogContext, '缩小', controllers['zoomOut']!),
+                _buildShortcutRow(
+                  dialogContext,
+                  '重置视图',
+                  controllers['resetView']!,
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -758,7 +1032,10 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
           ),
           TextButton(
             onPressed: () {
-              final defaults = ShortcutSettings().toJson();
+              final defaults = ShortcutSettings.getDefaults();
+              controllers['undo']!.text = defaults['undo']!;
+              controllers['redo']!.text = defaults['redo']!;
+              controllers['save']!.text = defaults['save']!;
               controllers['moveUp']!.text = defaults['moveUp']!;
               controllers['moveDown']!.text = defaults['moveDown']!;
               controllers['moveLeft']!.text = defaults['moveLeft']!;
@@ -772,6 +1049,9 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
           FilledButton(
             onPressed: () async {
               final newSettings = ShortcutSettings(
+                undo: controllers['undo']!.text.toUpperCase(),
+                redo: controllers['redo']!.text.toUpperCase(),
+                save: controllers['save']!.text.toUpperCase(),
                 moveUp: controllers['moveUp']!.text.toUpperCase(),
                 moveDown: controllers['moveDown']!.text.toUpperCase(),
                 moveLeft: controllers['moveLeft']!.text.toUpperCase(),
