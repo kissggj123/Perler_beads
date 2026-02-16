@@ -32,6 +32,11 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     super.initState();
     _designNameController.text =
         '导入设计 ${DateTime.now().millisecondsSinceEpoch % 10000}';
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<ImageProcessingProvider>();
+      provider.initializeGpuProcessor();
+    });
   }
 
   @override
@@ -271,6 +276,9 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                   onHeightChanged: provider.setOutputHeight,
                   onMaintainAspectRatioChanged: provider.setMaintainAspectRatio,
                   onPresetSelected: provider.applyPreset,
+                  recommendedSize: provider.recommendedSize,
+                  alternativeSizes: provider.alternativeSizes,
+                  onApplyRecommendedSize: provider.applyRecommendedSize,
                 ),
                 const SizedBox(height: 16),
                 _buildImageAdjustmentsCard(context, provider),
@@ -470,7 +478,11 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                   ),
               ],
             ),
+            const SizedBox(height: 12),
+            _buildGpuAndAutoAdjustSection(context, provider),
             const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 12),
             _buildOptimizedSlider(
               context,
               label: '亮度',
@@ -789,6 +801,191 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildGpuAndAutoAdjustSection(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.primaryContainer.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.speed,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '智能优化',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildFeatureToggle(
+                  context,
+                  icon: Icons.memory,
+                  label: 'GPU 加速',
+                  subtitle: provider.isGpuAvailable ? '已启用' : '不可用',
+                  value:
+                      provider.enableGpuAcceleration && provider.isGpuAvailable,
+                  onChanged: provider.isGpuAvailable
+                      ? (value) => provider.setEnableGpuAcceleration(value)
+                      : null,
+                  isEnabled: provider.isGpuAvailable,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildFeatureToggle(
+                  context,
+                  icon: Icons.auto_fix_high,
+                  label: '自动调整',
+                  subtitle: provider.isAnalyzing
+                      ? '分析中...'
+                      : (provider.autoAdjustEnabled ? '已启用' : '关闭'),
+                  value: provider.autoAdjustEnabled,
+                  onChanged: (value) => provider.setAutoAdjustEnabled(value),
+                  isEnabled: true,
+                ),
+              ),
+            ],
+          ),
+          if (provider.autoAdjustEnabled &&
+              provider.autoAdjustDescription != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  if (provider.isAnalyzing)
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    )
+                  else
+                    Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      provider.autoAdjustDescription!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (provider.autoAdjustEnabled &&
+              provider.autoAdjustment != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () => provider.analyzeAndAutoAdjust(),
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('重新分析'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureToggle(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required bool value,
+    required void Function(bool)? onChanged,
+    required bool isEnabled,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isEnabled
+            ? (value
+                  ? colorScheme.primaryContainer.withValues(alpha: 0.5)
+                  : colorScheme.surface)
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 20,
+            color: isEnabled
+                ? (value ? colorScheme.primary : colorScheme.onSurfaceVariant)
+                : colorScheme.outline,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: isEnabled
+                        ? colorScheme.onSurface
+                        : colorScheme.outline,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: isEnabled
+                        ? colorScheme.onSurfaceVariant
+                        : colorScheme.outline,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(value: value, onChanged: onChanged),
+        ],
+      ),
     );
   }
 

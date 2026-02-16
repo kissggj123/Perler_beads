@@ -2,7 +2,7 @@ name: bunnycc_perler
 description: "兔可可的拼豆世界 - BunnyCC Perler Bead Designer"
 publish_to: 'none'
 
-version: 2.0.0+6
+version: 2.0.5+7
 
 environment:
   sdk: ^3.10.7

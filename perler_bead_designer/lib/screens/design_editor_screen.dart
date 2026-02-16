@@ -40,6 +40,7 @@ class _DesignEditorContentState extends State<_DesignEditorContent> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeEditor();
+      _focusNode.requestFocus();
     });
   }
 

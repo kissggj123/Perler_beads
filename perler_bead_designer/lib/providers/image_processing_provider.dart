@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:file_picker/file_picker.dart';
@@ -11,9 +12,33 @@ import '../services/image_processing_service.dart'
         AlgorithmStyle,
         ExperimentalEffect,
         ImageProcessingService,
-        ColorAnalysisResult;
+        ColorAnalysisResult,
+        GpuImageProcessor,
+        AutoImageAdjustment,
+        ImageAnalyzer;
 
 enum ProcessingState { idle, loading, processing, completed, error }
+
+class RecommendedSize {
+  final int width;
+  final int height;
+  final String label;
+  final String description;
+  final int beadCount;
+
+  const RecommendedSize({
+    required this.width,
+    required this.height,
+    required this.label,
+    required this.description,
+    required this.beadCount,
+  });
+
+  double get aspectRatio => width / height;
+
+  @override
+  String toString() => '$width×$height ($label)';
+}
 
 class ImageProcessingProvider extends ChangeNotifier {
   final ImageProcessingService _service = ImageProcessingService();
@@ -33,6 +58,9 @@ class ImageProcessingProvider extends ChangeNotifier {
   bool _maintainAspectRatio = true;
   double _originalAspectRatio = 1.0;
 
+  RecommendedSize? _recommendedSize;
+  List<RecommendedSize> _alternativeSizes = [];
+
   ProcessingState _state = ProcessingState.idle;
   double _progress = 0.0;
   String? _errorMessage;
@@ -49,6 +77,12 @@ class ImageProcessingProvider extends ChangeNotifier {
   ExperimentalEffect _experimentalEffect = ExperimentalEffect.none;
   double _effectIntensity = 1.0;
 
+  bool _enableGpuAcceleration = true;
+  bool _autoAdjustEnabled = false;
+  AutoImageAdjustment? _autoAdjustment;
+  bool _isAnalyzing = false;
+  String? _autoAdjustDescription;
+
   File? get selectedFile => _selectedFile;
   img.Image? get originalImage => _originalImage;
   img.Image? get previewImage => _previewImage;
@@ -63,6 +97,8 @@ class ImageProcessingProvider extends ChangeNotifier {
   int get outputHeight => _outputHeight;
   bool get maintainAspectRatio => _maintainAspectRatio;
   double get originalAspectRatio => _originalAspectRatio;
+  RecommendedSize? get recommendedSize => _recommendedSize;
+  List<RecommendedSize> get alternativeSizes => _alternativeSizes;
 
   ProcessingState get state => _state;
   double get progress => _progress;
@@ -83,6 +119,13 @@ class ImageProcessingProvider extends ChangeNotifier {
   bool get isProcessing =>
       _state == ProcessingState.loading || _state == ProcessingState.processing;
   bool get isCompleted => _state == ProcessingState.completed;
+
+  bool get enableGpuAcceleration => _enableGpuAcceleration;
+  bool get autoAdjustEnabled => _autoAdjustEnabled;
+  AutoImageAdjustment? get autoAdjustment => _autoAdjustment;
+  bool get isAnalyzing => _isAnalyzing;
+  String? get autoAdjustDescription => _autoAdjustDescription;
+  bool get isGpuAvailable => GpuImageProcessor.isGpuAvailable;
 
   Future<void> selectImage() async {
     try {
@@ -128,6 +171,8 @@ class ImageProcessingProvider extends ChangeNotifier {
       }
 
       _originalAspectRatio = _originalImage!.width / _originalImage!.height;
+
+      _calculateRecommendedSizes();
 
       if (_maintainAspectRatio) {
         _adjustHeightToMaintainAspectRatio();
@@ -364,6 +409,76 @@ class ImageProcessingProvider extends ChangeNotifier {
     _outputWidth = (_outputHeight * _originalAspectRatio).round().clamp(1, 500);
   }
 
+  void _calculateRecommendedSizes() {
+    if (_originalImage == null) return;
+
+    final imageWidth = _originalImage!.width;
+    final imageHeight = _originalImage!.height;
+    final aspectRatio = imageWidth / imageHeight;
+
+    _alternativeSizes = [];
+
+    final targetBeadCounts = [
+      {'count': 400, 'label': '迷你', 'description': '适合初学者快速完成'},
+      {'count': 841, 'label': '小号', 'description': '标准小号拼豆板'},
+      {'count': 1225, 'label': '中号', 'description': '平衡细节与工作量'},
+      {'count': 2500, 'label': '大号', 'description': '适合复杂图案'},
+      {'count': 5000, 'label': '超大', 'description': '专业级精细作品'},
+    ];
+
+    RecommendedSize? bestMatch;
+    double minDifference = double.infinity;
+
+    for (final target in targetBeadCounts) {
+      final targetCount = target['count'] as int;
+      final label = target['label'] as String;
+      final description = target['description'] as String;
+
+      int width, height;
+      if (aspectRatio >= 1) {
+        width = sqrt(targetCount * aspectRatio).round();
+        height = (width / aspectRatio).round();
+      } else {
+        height = sqrt(targetCount / aspectRatio).round();
+        width = (height * aspectRatio).round();
+      }
+
+      width = width.clamp(10, 500);
+      height = height.clamp(10, 500);
+
+      final actualCount = width * height;
+      final size = RecommendedSize(
+        width: width,
+        height: height,
+        label: label,
+        description: description,
+        beadCount: actualCount,
+      );
+
+      _alternativeSizes.add(size);
+
+      final difference = (actualCount - targetCount).abs().toDouble();
+      if (difference < minDifference) {
+        minDifference = difference;
+        bestMatch = size;
+      }
+    }
+
+    _recommendedSize = bestMatch;
+
+    if (_recommendedSize != null) {
+      _outputWidth = _recommendedSize!.width;
+      _outputHeight = _recommendedSize!.height;
+    }
+  }
+
+  void applyRecommendedSize(RecommendedSize size) {
+    _outputWidth = size.width;
+    _outputHeight = size.height;
+    _generatePreview();
+    notifyListeners();
+  }
+
   Future<void> analyzeColors(ColorPalette palette) async {
     if (_previewImage == null) return;
 
@@ -484,5 +599,97 @@ class ImageProcessingProvider extends ChangeNotifier {
       pixel.g.toInt(),
       pixel.b.toInt(),
     );
+  }
+
+  void setEnableGpuAcceleration(bool enable) {
+    _enableGpuAcceleration = enable;
+    notifyListeners();
+  }
+
+  void setAutoAdjustEnabled(bool enable) {
+    _autoAdjustEnabled = enable;
+    if (enable && _originalImage != null && _autoAdjustment == null) {
+      analyzeAndAutoAdjust();
+    } else if (!enable) {
+      resetAdjustments();
+    }
+    notifyListeners();
+  }
+
+  Future<void> analyzeAndAutoAdjust() async {
+    if (_originalImage == null || _isAnalyzing) return;
+
+    _isAnalyzing = true;
+    _autoAdjustDescription = '正在分析图像...';
+    notifyListeners();
+
+    try {
+      _autoAdjustment = await ImageAnalyzer.analyzeImage(_originalImage!);
+
+      if (_autoAdjustEnabled && _autoAdjustment != null) {
+        _brightness = _autoAdjustment!.brightness;
+        _contrast = _autoAdjustment!.contrast;
+        _saturation = _autoAdjustment!.saturation;
+        _autoAdjustDescription = _autoAdjustment!.description;
+
+        await _generatePreview();
+      }
+    } catch (e) {
+      debugPrint('Error analyzing image: $e');
+      _autoAdjustDescription = '分析失败';
+    } finally {
+      _isAnalyzing = false;
+      notifyListeners();
+    }
+  }
+
+  void applyAutoAdjustment() {
+    if (_autoAdjustment == null) return;
+
+    _brightness = _autoAdjustment!.brightness;
+    _contrast = _autoAdjustment!.contrast;
+    _saturation = _autoAdjustment!.saturation;
+    _generatePreview();
+    notifyListeners();
+  }
+
+  Future<void> initializeGpuProcessor() async {
+    await GpuImageProcessor.initialize();
+    notifyListeners();
+  }
+
+  Future<ui.Image?> processWithGpu() async {
+    if (_flutterOriginalImage == null) return null;
+    if (!_enableGpuAcceleration || !GpuImageProcessor.isGpuAvailable) {
+      return null;
+    }
+
+    try {
+      return await GpuImageProcessor.processImageWithGpu(
+        _flutterOriginalImage!,
+        brightness: _brightness,
+        contrast: _contrast,
+        saturation: _saturation,
+      );
+    } catch (e) {
+      debugPrint('GPU processing failed: $e');
+      return null;
+    }
+  }
+
+  Map<String, dynamic> getProcessingInfo() {
+    return {
+      'gpuEnabled': _enableGpuAcceleration,
+      'gpuAvailable': GpuImageProcessor.isGpuAvailable,
+      'autoAdjustEnabled': _autoAdjustEnabled,
+      'hasAutoAdjustment': _autoAdjustment != null,
+      'currentAdjustments': {
+        'brightness': _brightness,
+        'contrast': _contrast,
+        'saturation': _saturation,
+      },
+      'imageSize': '$_originalImageWidth x $_originalImageHeight',
+      'outputSize': '$_outputWidth x $_outputHeight',
+    };
   }
 }

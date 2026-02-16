@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../providers/image_processing_provider.dart' show RecommendedSize;
 
 class SizeSettingsWidget extends StatefulWidget {
   final int width;
@@ -9,6 +10,9 @@ class SizeSettingsWidget extends StatefulWidget {
   final ValueChanged<int> onHeightChanged;
   final ValueChanged<bool> onMaintainAspectRatioChanged;
   final ValueChanged<int>? onPresetSelected;
+  final RecommendedSize? recommendedSize;
+  final List<RecommendedSize> alternativeSizes;
+  final void Function(RecommendedSize)? onApplyRecommendedSize;
 
   const SizeSettingsWidget({
     super.key,
@@ -19,6 +23,9 @@ class SizeSettingsWidget extends StatefulWidget {
     required this.onHeightChanged,
     required this.onMaintainAspectRatioChanged,
     this.onPresetSelected,
+    this.recommendedSize,
+    this.alternativeSizes = const [],
+    this.onApplyRecommendedSize,
   });
 
   @override
@@ -73,6 +80,10 @@ class _SizeSettingsWidgetState extends State<SizeSettingsWidget> {
           children: [
             _buildHeader(context),
             const SizedBox(height: 16),
+            if (widget.recommendedSize != null) ...[
+              _buildRecommendedSizeSection(context),
+              const SizedBox(height: 16),
+            ],
             _buildPresetButtons(context),
             const SizedBox(height: 16),
             _buildDimensionInputs(context),
@@ -108,6 +119,187 @@ class _SizeSettingsWidgetState extends State<SizeSettingsWidget> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRecommendedSizeSection(BuildContext context) {
+    final recommended = widget.recommendedSize!;
+    final isCurrentSize =
+        widget.width == recommended.width && widget.height == recommended.height;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5),
+            Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.auto_awesome,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '推荐尺寸',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              if (!isCurrentSize)
+                FilledButton.tonalIcon(
+                  onPressed: () => widget.onApplyRecommendedSize?.call(recommended),
+                  icon: const Icon(Icons.check, size: 16),
+                  label: const Text('应用'),
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${recommended.width}×${recommended.height}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        recommended.label,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        recommended.description,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${recommended.beadCount}',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '颗珠',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (widget.alternativeSizes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              '其他可选尺寸',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: widget.alternativeSizes.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final size = widget.alternativeSizes[index];
+                  final isSelected =
+                      widget.width == size.width && widget.height == size.height;
+
+                  return InkWell(
+                    onTap: () => widget.onApplyRecommendedSize?.call(size),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${size.width}×${size.height}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: isSelected ? FontWeight.bold : null,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            size.label,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

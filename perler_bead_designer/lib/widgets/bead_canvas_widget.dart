@@ -30,6 +30,7 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   bool _isPanning = false;
   Offset? _lastPanPosition;
   OverlayEntry? _colorInfoOverlay;
+  CanvasTransform? _lastTransform;
 
   @override
   void initState() {
@@ -42,9 +43,13 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   void _syncTransformFromProvider() {
     final provider = context.read<DesignEditorProvider>();
     final transform = provider.canvasTransform;
+    
+    if (_lastTransform == transform) return;
+    _lastTransform = transform;
+    
     final matrix = Matrix4.identity();
-    matrix.translate(transform.offset.dx, transform.offset.dy);
     matrix.scale(transform.scale);
+    matrix.translate(transform.offset.dx, transform.offset.dy);
     _transformController.value = matrix;
   }
 
@@ -303,6 +308,8 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   Widget build(BuildContext context) {
     return Consumer2<DesignEditorProvider, AppProvider>(
       builder: (context, provider, appProvider, child) {
+        _syncTransformFromProvider();
+        
         final design = provider.currentDesign;
 
         if (design == null) {

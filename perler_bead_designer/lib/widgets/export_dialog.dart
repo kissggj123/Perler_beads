@@ -731,6 +731,7 @@ class _ExportDialogState extends State<ExportDialog> {
       return await FilePicker.platform.saveFile(
         dialogTitle: '保存文件',
         fileName: '$fileName.$extension',
+        type: FileType.custom,
         allowedExtensions: [extension],
       );
     }

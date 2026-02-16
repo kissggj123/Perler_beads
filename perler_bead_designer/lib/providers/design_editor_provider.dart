@@ -17,6 +17,17 @@ class CanvasTransform {
       offset: offset ?? this.offset,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is CanvasTransform &&
+        other.scale == scale &&
+        other.offset == offset;
+  }
+
+  @override
+  int get hashCode => Object.hash(scale, offset);
 }
 
 class ShortcutSettings {

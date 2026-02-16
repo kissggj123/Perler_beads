@@ -270,6 +270,7 @@ class ExportService {
       outputPath = await FilePicker.platform.saveFile(
         dialogTitle: dialogTitle,
         fileName: suggestedName,
+        type: FileType.custom,
         allowedExtensions: [extension],
       );
     } else {
