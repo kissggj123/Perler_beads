@@ -1,9 +1,11 @@
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:io' show File, HttpClient, SocketException;
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:http/io_client.dart' as io_client;
 
 class ReleaseInfo {
   final String version;
@@ -130,13 +132,59 @@ class VersionCheckResult {
   final ReleaseInfo? releaseInfo;
   final String? errorMessage;
   final bool isSkipped;
+  final bool isUsingProxy;
 
   const VersionCheckResult({
     required this.hasUpdate,
     this.releaseInfo,
     this.errorMessage,
     this.isSkipped = false,
+    this.isUsingProxy = false,
   });
+}
+
+class ProxyConfig {
+  final String? host;
+  final int? port;
+  final String? username;
+  final String? password;
+  final bool enabled;
+
+  const ProxyConfig({
+    this.host,
+    this.port,
+    this.username,
+    this.password,
+    this.enabled = false,
+  });
+
+  factory ProxyConfig.fromJson(Map<String, dynamic> json) {
+    return ProxyConfig(
+      host: json['host'] as String?,
+      port: json['port'] as int?,
+      username: json['username'] as String?,
+      password: json['password'] as String?,
+      enabled: json['enabled'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'host': host,
+      'port': port,
+      'username': username,
+      'password': password,
+      'enabled': enabled,
+    };
+  }
+
+  String? get proxyUrl {
+    if (!enabled || host == null || port == null) return null;
+    if (username == null || password == null) {
+      return 'http://$host:$port';
+    }
+    return 'http://$username:$password@$host:$port';
+  }
 }
 
 class VersionCheckService {
@@ -145,15 +193,21 @@ class VersionCheckService {
   static const String _skippedVersionKey = 'skipped_version';
   static const String _lastCheckTimeKey = 'last_version_check_time';
   static const String _autoCheckEnabledKey = 'auto_version_check_enabled';
+  static const String _proxyConfigKey = 'proxy_config';
+  static const String _useSystemProxyKey = 'use_system_proxy';
+  static const String _proxyTestUrl = 'https://www.google.com';
 
   static final VersionCheckService _instance = VersionCheckService._internal();
   factory VersionCheckService() => _instance;
   VersionCheckService._internal();
 
   SharedPreferences? _prefs;
+  ProxyConfig _proxyConfig = const ProxyConfig();
+  bool _useSystemProxy = false;
 
   Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
+    _loadProxyConfig();
   }
 
   SharedPreferences get prefs {
@@ -163,15 +217,79 @@ class VersionCheckService {
     return _prefs!;
   }
 
+  ProxyConfig get proxyConfig => _proxyConfig;
+  bool get useSystemProxy => _useSystemProxy;
+
+  void _loadProxyConfig() {
+    if (_prefs == null) return;
+
+    final proxyJson = _prefs!.getString(_proxyConfigKey);
+    if (proxyJson != null) {
+      try {
+        final json = jsonDecode(proxyJson) as Map<String, dynamic>;
+        _proxyConfig = ProxyConfig.fromJson(json);
+      } catch (e) {
+        debugPrint('Failed to load proxy config: $e');
+        _proxyConfig = const ProxyConfig();
+      }
+    }
+
+    _useSystemProxy = _prefs!.getBool(_useSystemProxyKey) ?? false;
+  }
+
+  Future<void> setProxyConfig(ProxyConfig config) async {
+    _proxyConfig = config;
+    await prefs.setString(_proxyConfigKey, jsonEncode(config.toJson()));
+  }
+
+  Future<void> setUseSystemProxy(bool enabled) async {
+    _useSystemProxy = enabled;
+    await prefs.setBool(_useSystemProxyKey, enabled);
+  }
+
+  Future<bool> testProxyConnection() async {
+    try {
+      final uri = Uri.parse(_proxyTestUrl);
+      final client = HttpClient();
+
+      if (_proxyConfig.enabled && _proxyConfig.proxyUrl != null) {
+        client.findProxy = (uri) => _proxyConfig.proxyUrl!;
+      } else if (_useSystemProxy) {
+        client.findProxy = HttpClient.findProxyFromEnvironment;
+      }
+
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      await response.drain();
+
+      client.close();
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Proxy test failed: $e');
+      return false;
+    }
+  }
+
   Future<VersionCheckResult> checkForUpdate({
-    String currentVersion = '2.5.0',
+    String currentVersion = '2.5.1',
     bool forceCheck = false,
   }) async {
     const int maxRetries = 3;
     const Duration retryDelay = Duration(seconds: 1);
+    bool isUsingProxy = false;
 
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        if (_proxyConfig.enabled && _proxyConfig.proxyUrl != null) {
+          isUsingProxy = true;
+          debugPrint('Using custom proxy: ${_proxyConfig.proxyUrl}');
+        } else if (_useSystemProxy) {
+          isUsingProxy = true;
+          debugPrint('Using system proxy');
+        } else {
+          debugPrint('Direct connection (no proxy)');
+        }
+
         final response = await http
             .get(
               Uri.parse(_githubApiUrl),
@@ -190,6 +308,7 @@ class VersionCheckService {
           return VersionCheckResult(
             hasUpdate: false,
             errorMessage: '服务器返回错误: ${response.statusCode}',
+            isUsingProxy: isUsingProxy,
           );
         }
 
@@ -205,6 +324,7 @@ class VersionCheckService {
               hasUpdate: true,
               releaseInfo: releaseInfo,
               isSkipped: true,
+              isUsingProxy: isUsingProxy,
             );
           }
         }
@@ -214,6 +334,29 @@ class VersionCheckService {
         return VersionCheckResult(
           hasUpdate: hasUpdate,
           releaseInfo: releaseInfo,
+          isUsingProxy: isUsingProxy,
+        );
+      } on TimeoutException catch (e) {
+        if (attempt < maxRetries) {
+          await Future.delayed(retryDelay);
+          continue;
+        }
+        debugPrint('Version check timeout (after $attempt attempts): $e');
+        return VersionCheckResult(
+          hasUpdate: false,
+          errorMessage: '检查更新超时: $e',
+          isUsingProxy: isUsingProxy,
+        );
+      } on SocketException catch (e) {
+        if (attempt < maxRetries) {
+          await Future.delayed(retryDelay);
+          continue;
+        }
+        debugPrint('Version check socket error (after $attempt attempts): $e');
+        return VersionCheckResult(
+          hasUpdate: false,
+          errorMessage: '网络连接失败: $e',
+          isUsingProxy: isUsingProxy,
         );
       } catch (e) {
         if (attempt < maxRetries) {
@@ -221,13 +364,18 @@ class VersionCheckService {
           continue;
         }
         debugPrint('Version check error (after $attempt attempts): $e');
-        return VersionCheckResult(hasUpdate: false, errorMessage: '检查更新失败: $e');
+        return VersionCheckResult(
+          hasUpdate: false,
+          errorMessage: '检查更新失败: $e',
+          isUsingProxy: isUsingProxy,
+        );
       }
     }
 
     return VersionCheckResult(
       hasUpdate: false,
       errorMessage: '检查更新失败: 达到最大重试次数',
+      isUsingProxy: isUsingProxy,
     );
   }
 
