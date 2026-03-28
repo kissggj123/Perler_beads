@@ -150,6 +150,7 @@ class SettingsService {
   static const String _easterEggDiscoveredKey = 'easter_egg_discovered';
   static const String _debugOverlayEnabledKey = 'debug_overlay_enabled';
   static const String _showBead3DEffectKey = 'show_bead_3d_effect';
+  static const String _welcomeScreenShownKey = 'welcome_screen_shown';
   static const String _themeColorsKey = 'theme_colors';
   static const String _presetThemeKey = 'preset_theme';
   static const String _savedColorSchemesKey = 'saved_color_schemes';
@@ -505,6 +506,14 @@ class SettingsService {
 
   Future<void> setShowBead3DEffect(bool value) async {
     await prefs.setBool(_showBead3DEffectKey, value);
+  }
+
+  bool getWelcomeScreenShown() {
+    return prefs.getBool(_welcomeScreenShownKey) ?? false;
+  }
+
+  Future<void> setWelcomeScreenShown(bool value) async {
+    await prefs.setBool(_welcomeScreenShownKey, value);
   }
 
   ThemeColors getThemeColors() {

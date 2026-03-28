@@ -9,6 +9,7 @@ import 'providers/color_palette_provider.dart';
 import 'providers/inventory_provider.dart';
 import 'providers/plugin_provider.dart';
 import 'screens/main_layout.dart';
+import 'screens/welcome_screen.dart';
 import 'services/performance_service.dart';
 import 'services/settings_service.dart';
 import 'services/storage_service.dart';
@@ -144,7 +145,11 @@ class PerlerBeadDesignerApp extends StatelessWidget {
             theme: _buildLightTheme(appProvider.themeColors),
             darkTheme: _buildDarkTheme(appProvider.themeColors),
             themeMode: appProvider.themeMode,
-            home: const MainLayout(),
+            home: appProvider.welcomeScreenShown
+                ? const MainLayout()
+                : WelcomeScreen(
+                    onStart: () => appProvider.setWelcomeScreenShown(true),
+                  ),
           );
         },
       ),

@@ -958,10 +958,139 @@ class ImageProcessingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleMaskEditMode() {
+    if (_backgroundMask == null && _originalImage != null) {
+      performBackgroundRemoval();
+    } else {
+      _backgroundMask = null;
+      _backgroundRemovedImage = null;
+      _flutterBackgroundRemovedImage = null;
+      _backgroundRemovalConfidence = 0.0;
+      _backgroundRemovalDescription = null;
+      _generatePreview();
+    }
+    notifyListeners();
+  }
+
+  void applyBestGuess() {
+    if (_autoAdjustment != null) {
+      _brightness = _autoAdjustment!.brightness;
+      _contrast = _autoAdjustment!.contrast;
+      _saturation = _autoAdjustment!.saturation;
+    }
+    if (_backgroundRemovalEnabled && _backgroundRemovedImage == null) {
+      performBackgroundRemoval();
+    }
+    _generatePreview();
+    notifyListeners();
+  }
+
+  void toggleAlgorithmStyle() {
+    _algorithmStyle = AlgorithmStyle
+        .values[(_algorithmStyle.index + 1) % AlgorithmStyle.values.length];
+    _generatePreview();
+    notifyListeners();
+  }
+
+  void toggleExperimentalEffect() {
+    _experimentalEffect =
+        ExperimentalEffect.values[(_experimentalEffect.index + 1) %
+            ExperimentalEffect.values.length];
+    if (_experimentalEffect == ExperimentalEffect.none) {
+      _effectIntensity = 1.0;
+    }
+    _generatePreview();
+    notifyListeners();
+  }
+
+  void toggleDitheringMode() {
+    _ditheringMode = DitheringMode
+        .values[(_ditheringMode.index + 1) % DitheringMode.values.length];
+    _generatePreview();
+    notifyListeners();
+  }
+
   img.Image? getEffectiveImage() {
     if (_backgroundRemovalEnabled && _backgroundRemovedImage != null) {
       return _backgroundRemovedImage;
     }
     return _originalImage;
+  }
+
+  void toggleBackgroundRemoval() {
+    _backgroundRemovalEnabled = !_backgroundRemovalEnabled;
+    if (_backgroundRemovalEnabled && _originalImage != null) {
+      performBackgroundRemoval();
+    } else {
+      _backgroundRemovedImage = null;
+      _flutterBackgroundRemovedImage = null;
+      _backgroundMask = null;
+      _backgroundRemovalConfidence = 0.0;
+      _backgroundRemovalDescription = null;
+      _generatePreview();
+    }
+    notifyListeners();
+  }
+
+  void toggleAutoAdjust() {
+    _autoAdjustEnabled = !_autoAdjustEnabled;
+    if (_autoAdjustEnabled &&
+        _originalImage != null &&
+        _autoAdjustment == null) {
+      analyzeAndAutoAdjust();
+    } else if (!_autoAdjustEnabled) {
+      resetAdjustments();
+    } else {
+      applyAutoAdjustment();
+    }
+    notifyListeners();
+  }
+
+  void toggleGpuAcceleration() {
+    _enableGpuAcceleration = !_enableGpuAcceleration;
+    notifyListeners();
+  }
+
+  void toggleDithering() {
+    _ditheringMode = _ditheringMode == DitheringMode.none
+        ? DitheringMode.floydSteinberg
+        : DitheringMode.none;
+    _generatePreview();
+    notifyListeners();
+  }
+
+  void resetAllSettings() {
+    _brightness = 0.0;
+    _contrast = 0.0;
+    _saturation = 0.0;
+    _ditheringMode = DitheringMode.none;
+    _algorithmStyle = AlgorithmStyle.realistic;
+    _experimentalEffect = ExperimentalEffect.none;
+    _effectIntensity = 1.0;
+    _backgroundRemovalEnabled = false;
+    _backgroundRemovedImage = null;
+    _flutterBackgroundRemovedImage = null;
+    _backgroundMask = null;
+    _backgroundRemovalConfidence = 0.0;
+    _backgroundRemovalDescription = null;
+    _autoAdjustEnabled = false;
+    _autoAdjustment = null;
+    _isAnalyzing = false;
+    _autoAdjustDescription = null;
+    _enableGpuAcceleration = true;
+    _generatePreview();
+    notifyListeners();
+  }
+
+  String get statusInfo {
+    final List<String> parts = [];
+    if (_backgroundRemovalEnabled) parts.add('已抠图');
+    if (_autoAdjustEnabled) parts.add('自动调整');
+    if (_ditheringMode != DitheringMode.none) parts.add('抖动');
+    if (_experimentalEffect != ExperimentalEffect.none) {
+      parts.add(_experimentalEffect.name);
+    }
+    if (parts.isEmpty) return '正常';
+    return parts.join('，');
   }
 }

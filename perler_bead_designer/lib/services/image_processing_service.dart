@@ -865,7 +865,7 @@ class ImageProcessingService {
           final avgR = (totalR / count).round().clamp(0, 255);
           final avgG = (totalG / count).round().clamp(0, 255);
           final avgB = (totalB / count).round().clamp(0, 255);
-          result.setPixel(x, y, img.ColorRgb8(avgR, avgG, avgB));
+          result.setPixel(x, y, img.ColorRgba8(avgR, avgG, avgB, 255));
         }
       }
     }
@@ -1328,7 +1328,7 @@ class ImageProcessingService {
         final newG = (g * edgeFactor).round().clamp(0, 255);
         final newB = (b * edgeFactor).round().clamp(0, 255);
 
-        result.setPixel(x, y, img.ColorRgb8(newR, newG, newB));
+        result.setPixel(x, y, img.ColorRgba8(newR, newG, newB, 255));
       }
     }
 
@@ -1375,7 +1375,7 @@ class ImageProcessingService {
         final qg = (quantizedColor >> 8) & 0xFF;
         final qb = quantizedColor & 0xFF;
 
-        result.setPixel(x, y, img.ColorRgb8(qr, qg, qb));
+        result.setPixel(x, y, img.ColorRgba8(qr, qg, qb, 255));
       }
     }
 
@@ -1454,7 +1454,7 @@ class ImageProcessingService {
         final newG = (sumG / weightSum).round().clamp(0, 255);
         final newB = (sumB / weightSum).round().clamp(0, 255);
 
-        result.setPixel(x, y, img.ColorRgb8(newR, newG, newB));
+        result.setPixel(x, y, img.ColorRgba8(newR, newG, newB, 255));
       }
     }
 
@@ -1556,7 +1556,7 @@ class ImageProcessingService {
 
           for (int y = by; y < by + blockSize && y < image.height; y++) {
             for (int x = bx; x < bx + blockSize && x < image.width; x++) {
-              result.setPixel(x, y, img.ColorRgb8(avgR, avgG, avgB));
+              result.setPixel(x, y, img.ColorRgba8(avgR, avgG, avgB, 255));
             }
           }
         }
@@ -1607,7 +1607,7 @@ class ImageProcessingService {
           final r = (avgR[maxIndex] / maxCount).round().clamp(0, 255);
           final g = (avgG[maxIndex] / maxCount).round().clamp(0, 255);
           final b = (avgB[maxIndex] / maxCount).round().clamp(0, 255);
-          result.setPixel(x, y, img.ColorRgb8(r, g, b));
+          result.setPixel(x, y, img.ColorRgba8(r, g, b, 255));
         }
       }
     }
@@ -1623,7 +1623,11 @@ class ImageProcessingService {
         final grayValue = (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b)
             .round()
             .clamp(0, 255);
-        gray.setPixel(x, y, img.ColorRgb8(grayValue, grayValue, grayValue));
+        gray.setPixel(
+          x,
+          y,
+          img.ColorRgba8(grayValue, grayValue, grayValue, 255),
+        );
       }
     }
 
@@ -1632,7 +1636,7 @@ class ImageProcessingService {
       for (int x = 0; x < image.width; x++) {
         final pixel = gray.getPixel(x, y);
         final inv = 255 - pixel.r.toInt();
-        inverted.setPixel(x, y, img.ColorRgb8(inv, inv, inv));
+        inverted.setPixel(x, y, img.ColorRgba8(inv, inv, inv, 255));
       }
     }
 
@@ -1657,7 +1661,11 @@ class ImageProcessingService {
           newValue = (g * 255 / (255 - b)).round().clamp(0, 255);
         }
 
-        result.setPixel(x, y, img.ColorRgb8(newValue, newValue, newValue));
+        result.setPixel(
+          x,
+          y,
+          img.ColorRgba8(newValue, newValue, newValue, 255),
+        );
       }
     }
 
@@ -1684,7 +1692,7 @@ class ImageProcessingService {
         final neonG = (g * 0.3 + edgeFactor * 200).round().clamp(0, 255);
         final neonB = (b * 0.3 + edgeFactor * 255).round().clamp(0, 255);
 
-        result.setPixel(x, y, img.ColorRgb8(neonR, neonG, neonB));
+        result.setPixel(x, y, img.ColorRgba8(neonR, neonG, neonB, 255));
       }
     }
 
@@ -1728,7 +1736,11 @@ class ImageProcessingService {
         }
 
         final magnitude = sqrt(gx * gx + gy * gy).clamp(0.0, 255.0).round();
-        result.setPixel(x, y, img.ColorRgb8(magnitude, magnitude, magnitude));
+        result.setPixel(
+          x,
+          y,
+          img.ColorRgba8(magnitude, magnitude, magnitude, 255),
+        );
       }
     }
 
@@ -1793,7 +1805,7 @@ class ImageProcessingService {
         final g = (sumG + 128).round().clamp(0, 255);
         final b = (sumB + 128).round().clamp(0, 255);
 
-        result.setPixel(x, y, img.ColorRgb8(r, g, b));
+        result.setPixel(x, y, img.ColorRgba8(r, g, b, 255));
       }
     }
 
@@ -1833,7 +1845,7 @@ class ImageProcessingService {
             .round()
             .clamp(0, 255);
 
-        result.setPixel(x, y, img.ColorRgb8(finalR, finalG, finalB));
+        result.setPixel(x, y, img.ColorRgba8(finalR, finalG, finalB, 255));
       }
     }
 
@@ -1848,7 +1860,7 @@ class ImageProcessingService {
         final g = (pixel.g.toInt() + noiseValue).round().clamp(0, 255);
         final b = (pixel.b.toInt() + noiseValue).round().clamp(0, 255);
 
-        noise.setPixel(x, y, img.ColorRgb8(r, g, b));
+        noise.setPixel(x, y, img.ColorRgba8(r, g, b, 255));
       }
     }
 
@@ -1871,7 +1883,7 @@ class ImageProcessingService {
 
         for (int y = by; y < by + blockSize && y < image.height; y++) {
           for (int x = bx; x < bx + blockSize && x < image.width; x++) {
-            result.setPixel(x, y, img.ColorRgb8(r, g, b));
+            result.setPixel(x, y, img.ColorRgba8(r, g, b, 255));
           }
         }
       }
@@ -1926,7 +1938,12 @@ class ImageProcessingService {
         result.setPixel(
           x,
           y,
-          img.ColorRgb8(redValues[mid], greenValues[mid], blueValues[mid]),
+          img.ColorRgba8(
+            redValues[mid],
+            greenValues[mid],
+            blueValues[mid],
+            255,
+          ),
         );
       }
     }
@@ -2836,16 +2853,7 @@ class BackgroundRemovalService {
         final pixel = image.getPixel(x, y);
 
         if (y < mask.length && x < mask[0].length && mask[y][x]) {
-          result.setPixel(
-            x,
-            y,
-            img.ColorRgba8(
-              pixel.r.toInt(),
-              pixel.g.toInt(),
-              pixel.b.toInt(),
-              0,
-            ),
-          );
+          result.setPixel(x, y, img.ColorRgba8(255, 255, 255, 0));
         } else {
           result.setPixel(
             x,

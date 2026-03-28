@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 class WelcomeScreen extends StatefulWidget {
   final VoidCallback onStart;
 
-  const WelcomeScreen({
-    super.key,
-    required this.onStart,
-  });
+  const WelcomeScreen({super.key, required this.onStart});
 
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -21,55 +18,37 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       icon: Icons.palette_outlined,
       title: '欢迎使用\n兔可可的拼豆世界',
       description: '一款专业的拼豆设计工具，让您的创意无限延伸',
-      features: [
-        '直观的设计界面',
-        '丰富的颜色选择',
-        '便捷的编辑工具',
-      ],
+      features: ['直观的设计界面', '丰富的颜色选择', '便捷的编辑工具'],
     ),
     WelcomePage(
       icon: Icons.grid_on_outlined,
       title: '设计画布',
       description: '在网格画布上自由创作您的拼豆作品',
-      features: [
-        '支持多种画布尺寸',
-        '实时显示坐标和颜色代号',
-        '撤销/重做功能',
-        '自动保存设计',
-      ],
+      features: ['支持多种画布尺寸', '实时显示坐标和颜色代号', '撤销/重做功能', '自动保存设计'],
     ),
     WelcomePage(
       icon: Icons.image_outlined,
       title: '图片导入',
       description: '将您喜爱的图片转换为拼豆设计',
-      features: [
-        '智能颜色匹配',
-        '图片缩放和移动',
-        '透明背景处理',
-        '智能抠图功能',
-      ],
+      features: ['智能颜色匹配', '图片缩放和移动', '透明背景处理', '智能抠图功能'],
     ),
     WelcomePage(
       icon: Icons.inventory_2_outlined,
       title: '库存管理',
       description: '管理您的拼豆库存，避免材料不足',
-      features: [
-        '记录拼豆库存数量',
-        '自动对比所需数量',
-        '低库存提醒',
-        '材料清单导出',
-      ],
+      features: ['记录拼豆库存数量', '自动对比所需数量', '低库存提醒', '材料清单导出'],
     ),
     WelcomePage(
       icon: Icons.picture_as_pdf_outlined,
       title: '导出分享',
       description: '将您的作品导出为多种格式',
-      features: [
-        'PNG 图片导出',
-        'PDF 文档导出',
-        '包含坐标和统计',
-        '支持中文显示',
-      ],
+      features: ['PNG 图片导出', 'PDF 文档导出', '包含坐标和统计', '支持中文显示'],
+    ),
+    WelcomePage(
+      icon: Icons.lightbulb_outline,
+      title: '新手引导',
+      description: '快速上手指南，助您轻松开始创作',
+      features: ['点击格子显示颜色信息', '拖动编辑蒙版调整抠图', '使用快捷键提高效率', '一键重置所有设置'],
     ),
   ];
 
@@ -165,20 +144,22 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             page.title,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  height: 1.3,
-                ),
+              fontWeight: FontWeight.bold,
+              height: 1.3,
+            ),
           ),
           const SizedBox(height: 16),
           Text(
             page.description,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 32),
-          ...page.features.map((feature) => _buildFeatureItem(context, feature)),
+          ...page.features.map(
+            (feature) => _buildFeatureItem(context, feature),
+          ),
         ],
       ),
     );
@@ -196,10 +177,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              feature,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(feature, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
       ),
@@ -223,9 +201,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     ? Icons.arrow_forward
                     : Icons.play_arrow,
               ),
-              label: Text(
-                _currentPage < _pages.length - 1 ? '下一步' : '开始使用',
-              ),
+              label: Text(_currentPage < _pages.length - 1 ? '下一步' : '开始使用'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),

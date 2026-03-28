@@ -2,14 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-enum BeadBrand {
-  perler,
-  hama,
-  artkal,
-  taobao,
-  pinduoduo,
-  generic,
-}
+enum BeadBrand { perler, hama, artkal, taobao, pinduoduo, generic }
 
 class BeadColor {
   final String code;
@@ -34,13 +27,43 @@ class BeadColor {
 
   Color get color => Color.fromRGBO(red, green, blue, 1.0);
 
-  String get hexCode => '#${red.toRadixString(16).padLeft(2, '0')}${green.toRadixString(16).padLeft(2, '0')}${blue.toRadixString(16).padLeft(2, '0')}'.toUpperCase();
+  String get hexCode =>
+      '#${red.toRadixString(16).padLeft(2, '0')}${green.toRadixString(16).padLeft(2, '0')}${blue.toRadixString(16).padLeft(2, '0')}'
+          .toUpperCase();
 
   String get hex => hexCode;
 
   int get r => red;
   int get g => green;
   int get b => blue;
+
+  static BeadColor fromHex(String hex) {
+    final cleanHex = hex.replaceAll('#', '').replaceAll('0x', '');
+    if (cleanHex.length == 6) {
+      final r = int.parse(cleanHex.substring(0, 2), radix: 16);
+      final g = int.parse(cleanHex.substring(2, 4), radix: 16);
+      final b = int.parse(cleanHex.substring(4, 6), radix: 16);
+      return BeadColor(
+        code: cleanHex,
+        name: '自定义颜色',
+        red: r,
+        green: g,
+        blue: b,
+      );
+    } else if (cleanHex.length == 8) {
+      final r = int.parse(cleanHex.substring(0, 2), radix: 16);
+      final g = int.parse(cleanHex.substring(2, 4), radix: 16);
+      final b = int.parse(cleanHex.substring(4, 6), radix: 16);
+      return BeadColor(
+        code: cleanHex.substring(0, 6),
+        name: '自定义颜色',
+        red: r,
+        green: g,
+        blue: b,
+      );
+    }
+    throw ArgumentError('Invalid hex color: $hex');
+  }
 
   bool get isLight {
     final luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;

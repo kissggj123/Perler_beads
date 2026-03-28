@@ -32,6 +32,7 @@ class AppProvider extends ChangeNotifier {
   bool _easterEggDiscovered = false;
   bool _debugOverlayEnabled = false;
   bool _showBead3DEffect = true;
+  bool _welcomeScreenShown = false;
   ThemeColors _themeColors = ThemeColors.fromPreset(
     PresetThemeType.defaultPink,
   );
@@ -111,6 +112,7 @@ class AppProvider extends ChangeNotifier {
     _easterEggDiscovered = _settingsService.getEasterEggDiscovered();
     _debugOverlayEnabled = _settingsService.getDebugOverlayEnabled();
     _showBead3DEffect = _settingsService.getShowBead3DEffect();
+    _welcomeScreenShown = _settingsService.getWelcomeScreenShown();
     _themeColors = _settingsService.getThemeColors();
     _presetTheme = _settingsService.getPresetTheme();
     _savedColorSchemes = _settingsService.getSavedColorSchemes();
@@ -163,6 +165,15 @@ class AppProvider extends ChangeNotifier {
       _sidebarExpanded = !shouldCollapse;
       notifyListeners();
     }
+  }
+
+  bool get welcomeScreenShown => _welcomeScreenShown;
+
+  Future<void> setWelcomeScreenShown(bool value) async {
+    if (_welcomeScreenShown == value) return;
+    _welcomeScreenShown = value;
+    await _settingsService.setWelcomeScreenShown(value);
+    notifyListeners();
   }
 
   Future<void> setAnimationsEnabled(bool enabled) async {

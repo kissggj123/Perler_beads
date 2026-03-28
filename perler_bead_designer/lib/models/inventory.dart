@@ -4,10 +4,7 @@ class Inventory {
   final List<InventoryItem> items;
   final DateTime lastUpdated;
 
-  const Inventory({
-    required this.items,
-    required this.lastUpdated,
-  });
+  const Inventory({required this.items, required this.lastUpdated});
 
   factory Inventory.fromJson(Map<String, dynamic> json) {
     final itemsList = json['items'] as List<dynamic>? ?? [];
@@ -27,20 +24,21 @@ class Inventory {
   }
 
   Inventory addItem(InventoryItem item) {
-    final existingIndex = items.indexWhere((i) => i.beadColor.code == item.beadColor.code);
+    final existingIndex = items.indexWhere(
+      (i) => i.beadColor.code == item.beadColor.code,
+    );
     List<InventoryItem> newItems;
 
     if (existingIndex >= 0) {
       newItems = List<InventoryItem>.from(items);
-      newItems[existingIndex] = newItems[existingIndex].addQuantity(item.quantity);
+      newItems[existingIndex] = newItems[existingIndex].addQuantity(
+        item.quantity,
+      );
     } else {
       newItems = [...items, item];
     }
 
-    return Inventory(
-      items: newItems,
-      lastUpdated: DateTime.now(),
-    );
+    return Inventory(items: newItems, lastUpdated: DateTime.now());
   }
 
   Inventory removeItem(String itemId) {
@@ -53,15 +51,15 @@ class Inventory {
   Inventory updateQuantity(String colorCode, int newQuantity) {
     final newItems = items.map((item) {
       if (item.beadColor.code == colorCode) {
-        return item.copyWith(quantity: newQuantity, lastUpdated: DateTime.now());
+        return item.copyWith(
+          quantity: newQuantity,
+          lastUpdated: DateTime.now(),
+        );
       }
       return item;
     }).toList();
 
-    return Inventory(
-      items: newItems,
-      lastUpdated: DateTime.now(),
-    );
+    return Inventory(items: newItems, lastUpdated: DateTime.now());
   }
 
   InventoryItem? findByColorCode(String colorCode) {
@@ -99,10 +97,21 @@ class Inventory {
 
   bool get isNotEmpty => items.isNotEmpty;
 
-  Inventory copyWith({
-    List<InventoryItem>? items,
-    DateTime? lastUpdated,
-  }) {
+  int getUniqueColorCount() {
+    return items.length;
+  }
+
+  bool hasSufficientQuantity(String colorCode, int quantity) {
+    final currentQuantity = getTotalQuantityForColor(colorCode);
+    return currentQuantity >= quantity;
+  }
+
+  bool isLowStock(String colorCode, int threshold) {
+    final currentQuantity = getTotalQuantityForColor(colorCode);
+    return currentQuantity <= threshold;
+  }
+
+  Inventory copyWith({List<InventoryItem>? items, DateTime? lastUpdated}) {
     return Inventory(
       items: items ?? this.items,
       lastUpdated: lastUpdated ?? this.lastUpdated,
@@ -110,10 +119,24 @@ class Inventory {
   }
 
   static Inventory empty() {
-    return Inventory(
-      items: const [],
+    return Inventory(items: const [], lastUpdated: DateTime.now());
+  }
+
+  int getTotalItems() {
+    return items.length;
+  }
+
+  InventoryItem? updateItem(String itemId, int newQuantity) {
+    final index = items.indexWhere((item) => item.id == itemId);
+    if (index == -1) return null;
+
+    final updatedItems = List<InventoryItem>.from(items);
+    updatedItems[index] = updatedItems[index].copyWith(
+      quantity: newQuantity,
       lastUpdated: DateTime.now(),
     );
+
+    return updatedItems[index];
   }
 
   @override
