@@ -30,6 +30,8 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
   OverlayEntry? _colorInfoOverlay;
   CanvasTransform? _lastTransform;
   bool _isSelecting = false;
+  Color? _highlightColor;
+  List<Offset>? _highlightPositions;
 
   @override
   void initState() {
@@ -278,6 +280,19 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
               final bead = design.getBead(position.$1, position.$2);
               if (bead != null) {
                 _showColorInfo(bead, event.localPosition, context);
+                _highlightColor = bead.color;
+                _highlightPositions = _findSameColorPositions(
+                  design,
+                  bead.color,
+                );
+                setState(() {});
+                Future.delayed(const Duration(seconds: 2), () {
+                  if (mounted) {
+                    _highlightColor = null;
+                    _highlightPositions = null;
+                    setState(() {});
+                  }
+                });
               }
             }
           } else if (provider.toolMode == ToolMode.select) {
@@ -302,6 +317,19 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
         _lastPanPosition = event.localPosition;
       }
     }
+  }
+
+  List<Offset> _findSameColorPositions(BeadDesign design, Color targetColor) {
+    final positions = <Offset>[];
+    for (int y = 0; y < design.height; y++) {
+      for (int x = 0; x < design.width; x++) {
+        final bead = design.getBead(x, y);
+        if (bead != null && bead.color == targetColor) {
+          positions.add(Offset(x.toDouble(), y.toDouble()));
+        }
+      }
+    }
+    return positions;
   }
 
   void _onPointerMove(
@@ -436,6 +464,8 @@ class _BeadCanvasWidgetState extends State<BeadCanvasWidget> {
                     gridColor: appProvider.gridColor,
                     coordinateFontSize: appProvider.effectiveCoordinateFontSize,
                     selection: provider.currentSelection,
+                    highlightColor: _highlightColor,
+                    highlightPositions: _highlightPositions,
                   ),
                 ),
               ),
@@ -459,6 +489,8 @@ class BeadCanvasPainter extends CustomPainter {
   final String gridColor;
   final double coordinateFontSize;
   final Selection? selection;
+  final Color? highlightColor;
+  final List<Offset>? highlightPositions;
 
   late final Paint _backgroundPaint;
   late final Paint _whitePaint;
@@ -468,6 +500,7 @@ class BeadCanvasPainter extends CustomPainter {
   late final Paint _shadowPaint;
   late final Paint _selectionPaint;
   late final Paint _selectionFillPaint;
+  late final Paint _sameColorHighlightPaint;
 
   BeadCanvasPainter({
     required this.design,
@@ -481,6 +514,8 @@ class BeadCanvasPainter extends CustomPainter {
     this.gridColor = '#9E9E9E',
     this.coordinateFontSize = 7.0,
     this.selection,
+    this.highlightColor,
+    this.highlightPositions,
   }) {
     _backgroundPaint = Paint()
       ..color = Colors.grey.shade200
@@ -516,6 +551,10 @@ class BeadCanvasPainter extends CustomPainter {
     _selectionFillPaint = Paint()
       ..color = Colors.blue.withValues(alpha: 0.1)
       ..style = PaintingStyle.fill;
+
+    _sameColorHighlightPaint = Paint()
+      ..color = Colors.yellow.withValues(alpha: 0.3)
+      ..style = PaintingStyle.fill;
   }
 
   Color _parseColor(String hexColor) {
@@ -533,6 +572,9 @@ class BeadCanvasPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     _drawBackground(canvas, size);
+    if (highlightColor != null && highlightPositions != null) {
+      _drawSameColorHighlights(canvas);
+    }
     _drawBeads(canvas);
     if (showGrid && !isPreviewMode) {
       _drawGrid(canvas, size);
@@ -992,6 +1034,20 @@ class BeadCanvasPainter extends CustomPainter {
     }
   }
 
+  void _drawSameColorHighlights(Canvas canvas) {
+    if (highlightColor == null || highlightPositions == null) return;
+
+    for (final pos in highlightPositions!) {
+      final rect = Rect.fromLTWH(
+        pos.dx * cellSize,
+        pos.dy * cellSize,
+        cellSize,
+        cellSize,
+      );
+      canvas.drawRect(rect, _sameColorHighlightPaint);
+    }
+  }
+
   @override
   bool shouldRepaint(covariant BeadCanvasPainter oldDelegate) {
     return !identical(oldDelegate.design, design) ||
@@ -1004,6 +1060,8 @@ class BeadCanvasPainter extends CustomPainter {
         oldDelegate.isPreviewMode != isPreviewMode ||
         oldDelegate.gridColor != gridColor ||
         oldDelegate.coordinateFontSize != coordinateFontSize ||
-        oldDelegate.selection != selection;
+        oldDelegate.selection != selection ||
+        oldDelegate.highlightColor != highlightColor ||
+        oldDelegate.highlightPositions != highlightPositions;
   }
 }

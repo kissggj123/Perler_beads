@@ -1,8 +1,9 @@
-
 import 'dart:convert';
+import 'dart:io' show File;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 
 class ReleaseInfo {
   final String version;
@@ -40,6 +41,19 @@ class ReleaseInfo {
       htmlUrl: json['html_url'] as String? ?? '',
       assets: assets,
       isPrerelease: json['prerelease'] as bool? ?? false,
+    );
+  }
+
+  factory ReleaseInfo.fromChangelogJson(Map<String, dynamic> json) {
+    return ReleaseInfo(
+      version: json['version'] as String? ?? '',
+      tagName: 'v${json['version']}',
+      releaseNotes:
+          (json['changes'] as List?)?.map((e) => '• $e').join('\n') ?? '',
+      publishedAt: json['date'] as String? ?? '',
+      htmlUrl: 'https://github.com/kissggj123/Perler_beads/releases',
+      assets: [],
+      isPrerelease: false,
     );
   }
 
@@ -150,7 +164,7 @@ class VersionCheckService {
   }
 
   Future<VersionCheckResult> checkForUpdate({
-    String currentVersion = '2.2.0',
+    String currentVersion = '2.3.0',
     bool forceCheck = false,
   }) async {
     try {
@@ -189,16 +203,10 @@ class VersionCheckService {
 
       await _updateLastCheckTime();
 
-      return VersionCheckResult(
-        hasUpdate: hasUpdate,
-        releaseInfo: releaseInfo,
-      );
+      return VersionCheckResult(hasUpdate: hasUpdate, releaseInfo: releaseInfo);
     } catch (e) {
       debugPrint('Version check error: $e');
-      return VersionCheckResult(
-        hasUpdate: false,
-        errorMessage: '检查更新失败: $e',
-      );
+      return VersionCheckResult(hasUpdate: false, errorMessage: '检查更新失败: $e');
     }
   }
 
@@ -207,10 +215,9 @@ class VersionCheckService {
       final currentParts = current.split('.').map(int.parse).toList();
       final latestParts = latest.split('.').map(int.parse).toList();
 
-      final maxLength =
-          currentParts.length > latestParts.length
-              ? currentParts.length
-              : latestParts.length;
+      final maxLength = currentParts.length > latestParts.length
+          ? currentParts.length
+          : latestParts.length;
 
       for (var i = 0; i < maxLength; i++) {
         final currentPart = i < currentParts.length ? currentParts[i] : 0;
@@ -243,10 +250,7 @@ class VersionCheckService {
   }
 
   Future<void> _updateLastCheckTime() async {
-    await prefs.setString(
-      _lastCheckTimeKey,
-      DateTime.now().toIso8601String(),
-    );
+    await prefs.setString(_lastCheckTimeKey, DateTime.now().toIso8601String());
   }
 
   DateTime? getLastCheckTime() {
@@ -299,5 +303,26 @@ class VersionCheckService {
     }
 
     return formatted.trim();
+  }
+
+  static Future<ReleaseInfo?> loadLocalReleaseInfo() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final changelogPath = '${directory.path}/changelog.json';
+
+      if (await File(changelogPath).exists()) {
+        final jsonString = await File(changelogPath).readAsString();
+        final json = jsonDecode(jsonString) as Map<String, dynamic>;
+        final versions = json['versions'] as List;
+        if (versions.isNotEmpty) {
+          return ReleaseInfo.fromChangelogJson(
+            versions[0] as Map<String, dynamic>,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to load local release info: $e');
+    }
+    return null;
   }
 }

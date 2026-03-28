@@ -21,31 +21,31 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       features: ['直观的设计界面', '丰富的颜色选择', '便捷的编辑工具'],
     ),
     WelcomePage(
-      iconPath: 'assets/images/canvas.png',
+      icon: PixelIcon.animalRabbit,
       title: '设计画布',
       description: '在网格画布上自由创作您的拼豆作品',
       features: ['支持多种画布尺寸', '实时显示坐标和颜色代号', '撤销/重做功能', '自动保存设计'],
     ),
     WelcomePage(
-      iconPath: 'assets/images/image_import.png',
+      icon: PixelIcon.animalCat,
       title: '图片导入',
       description: '将您喜爱的图片转换为拼豆设计',
       features: ['智能颜色匹配', '图片缩放和移动', '透明背景处理', '智能抠图功能'],
     ),
     WelcomePage(
-      iconPath: 'assets/images/inventory.png',
+      icon: PixelIcon.animalDog,
       title: '库存管理',
       description: '管理您的拼豆库存，避免材料不足',
       features: ['记录拼豆库存数量', '自动对比所需数量', '低库存提醒', '材料清单导出'],
     ),
     WelcomePage(
-      iconPath: 'assets/images/export.png',
+      icon: PixelIcon.animalBird,
       title: '导出分享',
       description: '将您的作品导出为多种格式',
       features: ['PNG 图片导出', 'PDF 文档导出', '包含坐标和统计', '支持中文显示'],
     ),
     WelcomePage(
-      iconPath: 'assets/images/guide.png',
+      icon: PixelIcon.animalPanda,
       title: '新手引导',
       description: '快速上手指南，助您轻松开始创作',
       features: ['点击格子显示颜色信息', '拖动编辑蒙版调整抠图', '使用快捷键提高效率', '一键重置所有设置'],
@@ -140,11 +140,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     height: 64,
                     fit: BoxFit.contain,
                   )
-                : Icon(
-                    page.icon!,
-                    size: 64,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                : (page.icon is PixelIcon
+                      ? (page.icon as PixelIcon).build(context)
+                      : Icon(
+                          page.icon!,
+                          size: 64,
+                          color: Theme.of(context).colorScheme.primary,
+                        )),
           ),
           const SizedBox(height: 32),
           Text(
@@ -243,7 +245,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
 class WelcomePage {
   final String? iconPath;
-  final IconData? icon;
+  final dynamic icon;
   final String title;
   final String description;
   final List<String> features;
@@ -255,4 +257,114 @@ class WelcomePage {
     required this.description,
     required this.features,
   });
+}
+
+class PixelIcon {
+  final List<List<int>> pixels;
+  final Color color;
+  final int size;
+
+  const PixelIcon({required this.pixels, required this.color, this.size = 8});
+
+  static const PixelIcon animalRabbit = PixelIcon(
+    pixels: [
+      [0, 1, 0, 0, 0, 0, 1, 0],
+      [0, 1, 1, 0, 0, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 0, 1, 0, 0, 1, 0, 0],
+      [0, 1, 0, 0, 0, 0, 1, 0],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+    ],
+    color: Color(0xFFFFA500),
+  );
+
+  static const PixelIcon animalCat = PixelIcon(
+    pixels: [
+      [0, 1, 0, 0, 0, 0, 1, 0],
+      [1, 1, 1, 0, 0, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 0, 1, 0, 0, 1, 0, 0],
+      [0, 1, 0, 0, 0, 0, 1, 0],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+    ],
+    color: Color(0xFF8B4513),
+  );
+
+  static const PixelIcon animalDog = PixelIcon(
+    pixels: [
+      [0, 1, 0, 0, 0, 0, 1, 0],
+      [1, 1, 1, 0, 0, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+    ],
+    color: Color(0xFFD2691E),
+  );
+
+  static const PixelIcon animalBird = PixelIcon(
+    pixels: [
+      [0, 0, 0, 1, 1, 0, 0, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [1, 1, 1, 1, 1, 1, 1, 1],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 0, 0, 1, 1, 0, 0, 0],
+      [0, 0, 1, 0, 0, 1, 0, 0],
+    ],
+    color: Color(0xFF00BFFF),
+  );
+
+  static const PixelIcon animalPanda = PixelIcon(
+    pixels: [
+      [1, 1, 0, 0, 0, 0, 1, 1],
+      [1, 1, 1, 0, 0, 1, 1, 1],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 0, 1, 0, 0, 1, 0, 0],
+      [0, 1, 0, 0, 0, 0, 1, 0],
+      [0, 1, 1, 1, 1, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0],
+    ],
+    color: Color(0xFF000000),
+  );
+
+  Widget build(BuildContext context) {
+    final pixelSize = 8.0;
+    final gap = 2.0;
+
+    return Container(
+      width: size * (pixelSize + gap),
+      height: size * (pixelSize + gap),
+      child: GridView.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: size,
+          crossAxisSpacing: gap,
+          mainAxisSpacing: gap,
+        ),
+        itemCount: size * size,
+        itemBuilder: (context, index) {
+          final row = index ~/ size;
+          final col = index % size;
+          final isFilled = pixels[row][col] == 1;
+
+          return Container(
+            width: pixelSize,
+            height: pixelSize,
+            decoration: BoxDecoration(
+              color: isFilled ? color : Colors.transparent,
+              shape: BoxShape.rectangle,
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
