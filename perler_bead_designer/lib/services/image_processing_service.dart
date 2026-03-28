@@ -1239,6 +1239,65 @@ class ImageProcessingService {
     }
   }
 
+  img.Image generatePerlerBeadStyle(
+    img.Image image, {
+    int beadWidth = 29,
+    int beadHeight = 29,
+    int colorLimit = 16,
+  }) {
+    final result = img.Image(width: beadWidth, height: beadHeight);
+
+    final pixelWidth = image.width / beadWidth;
+    final pixelHeight = image.height / beadHeight;
+
+    for (int y = 0; y < beadHeight; y++) {
+      for (int x = 0; x < beadWidth; x++) {
+        final startX = (x * pixelWidth).round();
+        final startY = (y * pixelHeight).round();
+        final endX = ((x + 1) * pixelWidth).round().clamp(0, image.width);
+        final endY = ((y + 1) * pixelHeight).round().clamp(0, image.height);
+
+        int totalR = 0, totalG = 0, totalB = 0;
+        int count = 0;
+
+        for (int py = startY; py < endY; py++) {
+          for (int px = startX; px < endX; px++) {
+            if (px < image.width && py < image.height) {
+              final pixel = image.getPixel(px, py);
+              totalR += pixel.r.toInt();
+              totalG += pixel.g.toInt();
+              totalB += pixel.b.toInt();
+              count++;
+            }
+          }
+        }
+
+        if (count > 0) {
+          final avgR = (totalR / count).round().clamp(0, 255);
+          final avgG = (totalG / count).round().clamp(0, 255);
+          final avgB = (totalB / count).round().clamp(0, 255);
+
+          final quantizedR = (avgR / 32).floor() * 32;
+          final quantizedG = (avgG / 32).floor() * 32;
+          final quantizedB = (avgB / 32).floor() * 32;
+
+          result.setPixel(
+            x,
+            y,
+            img.ColorRgba8(
+              quantizedR.clamp(0, 255),
+              quantizedG.clamp(0, 255),
+              quantizedB.clamp(0, 255),
+              255,
+            ),
+          );
+        }
+      }
+    }
+
+    return result;
+  }
+
   img.Image _applyPixelArtStyle(img.Image image, {int colorLimit = 16}) {
     var result = img.copyResize(
       image,

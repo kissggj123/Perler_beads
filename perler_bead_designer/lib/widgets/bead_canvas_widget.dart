@@ -493,7 +493,6 @@ class BeadCanvasPainter extends CustomPainter {
   final List<Offset>? highlightPositions;
 
   late final Paint _backgroundPaint;
-  late final Paint _whitePaint;
   late final Paint _gridPaint;
   late final Paint _majorGridPaint;
   late final Paint _highlightPaint;
@@ -519,10 +518,6 @@ class BeadCanvasPainter extends CustomPainter {
   }) {
     _backgroundPaint = Paint()
       ..color = Colors.grey.shade200
-      ..style = PaintingStyle.fill;
-
-    _whitePaint = Paint()
-      ..color = Colors.white
       ..style = PaintingStyle.fill;
 
     _gridPaint = Paint()
@@ -596,6 +591,9 @@ class BeadCanvasPainter extends CustomPainter {
 
   void _drawBeads(Canvas canvas) {
     final beadPaint = Paint()..style = PaintingStyle.fill;
+    final whitePaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = Colors.white;
 
     for (int y = 0; y < design.height; y++) {
       for (int x = 0; x < design.width; x++) {
@@ -633,7 +631,7 @@ class BeadCanvasPainter extends CustomPainter {
             );
           }
         } else {
-          canvas.drawRect(rect, _whitePaint);
+          canvas.drawRect(rect, whitePaint);
         }
 
         if (showCoordinates && cellSize >= 12) {

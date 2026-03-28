@@ -297,7 +297,14 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                   _buildProgressIndicator(provider),
                 ],
                 const SizedBox(height: 24),
-                _buildActionButtons(context, provider),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildPerlerBeadStyleButton(context, provider),
+                    const SizedBox(width: 16),
+                    _buildActionButtons(context, provider),
+                  ],
+                ),
                 const SizedBox(height: 16),
               ],
             ),
@@ -1198,6 +1205,19 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     );
   }
 
+  Widget _buildPerlerBeadStyleButton(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) {
+    return FilledButton.icon(
+      onPressed: provider.isProcessing
+          ? null
+          : () => _generatePerlerBeadStyle(context, provider),
+      icon: const Icon(Icons.palette),
+      label: const Text('生成拼豆风格'),
+    );
+  }
+
   Widget _buildActionButtons(
     BuildContext context,
     ImageProcessingProvider provider,
@@ -1758,6 +1778,58 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
               const Icon(Icons.check_circle, color: Colors.white),
               const SizedBox(width: 8),
               Text('设计已生成: ${design.width}×${design.height}'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      if (widget.onDesignCreated != null) {
+        widget.onDesignCreated!(design);
+      } else {
+        Navigator.of(context).pop(design);
+      }
+    } else if (mounted && provider.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.errorMessage!),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _generatePerlerBeadStyle(
+    BuildContext context,
+    ImageProcessingProvider provider,
+  ) async {
+    final paletteProvider = context.read<ColorPaletteProvider>();
+    final palette = ColorPalette(
+      id: 'current',
+      name: '当前调色板',
+      colors: paletteProvider.allColors,
+    );
+
+    final design = await provider.generatePerlerBeadStyle(
+      palette,
+      designName: _designNameController.text.trim().isEmpty
+          ? '拼豆风格设计'
+          : _designNameController.text.trim(),
+      beadWidth: 29,
+      beadHeight: 29,
+      colorLimit: 16,
+    );
+
+    if (design != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Text('拼豆风格已生成: ${design.width}×${design.height}'),
             ],
           ),
           backgroundColor: Colors.green,

@@ -355,6 +355,54 @@ class ImageProcessingProvider extends ChangeNotifier {
     }
   }
 
+  Future<BeadDesign?> generatePerlerBeadStyle(
+    ColorPalette palette, {
+    String? designName,
+    int beadWidth = 29,
+    int beadHeight = 29,
+    int colorLimit = 16,
+  }) async {
+    if (_originalImage == null) {
+      _setError('没有可处理的图片');
+      return null;
+    }
+
+    _setState(ProcessingState.processing);
+    _progress = 0.0;
+
+    try {
+      final processedImage = _service.generatePerlerBeadStyle(
+        _originalImage!,
+        beadWidth: beadWidth,
+        beadHeight: beadHeight,
+        colorLimit: colorLimit,
+      );
+
+      final design = await _service.convertToBeadDesign(
+        processedImage,
+        palette,
+        beadWidth,
+        beadHeight,
+        designName ?? '拼豆风格设计',
+        ditheringMode: _ditheringMode,
+        onProgress: (progress) {
+          _progress = progress;
+          notifyListeners();
+        },
+      );
+
+      _resultDesign = design;
+      _colorAnalysis = _service.analyzeImageColors(processedImage, palette);
+      _setState(ProcessingState.completed);
+      _progress = 1.0;
+
+      return design;
+    } catch (e) {
+      _setError('生成拼豆风格失败: $e');
+      return null;
+    }
+  }
+
   void setOutputSize(int width, int height) {
     _outputWidth = width.clamp(1, 500);
     _outputHeight = height.clamp(1, 500);
