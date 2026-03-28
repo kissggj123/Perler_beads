@@ -27,7 +27,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen>
     with SingleTickerProviderStateMixin {
   static const String appName = '兔可可的拼豆世界';
-  static const String appVersion = '2.1.2';
+  static const String appVersion = '2.2.0';
   static const String developer = 'BunnyCC';
   static const String copyright =
       'Copyright © 2026 BunnyCC. All rights reserved.';

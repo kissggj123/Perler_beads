@@ -593,6 +593,10 @@ class BeadCanvasPainter extends CustomPainter {
         } else {
           canvas.drawRect(rect, _whitePaint);
         }
+
+        if (showCoordinates && cellSize >= 12) {
+          _drawCellCoordinates(canvas, x, y, rect);
+        }
       }
     }
   }
@@ -815,6 +819,73 @@ class BeadCanvasPainter extends CustomPainter {
     } else {
       return Colors.black.withValues(alpha: 0.4);
     }
+  }
+
+  void _drawCellCoordinates(Canvas canvas, int x, int y, Rect rect) {
+    final textPainter = TextPainter(
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+    );
+
+    final padding = cellSize * 0.1;
+    final availableWidth = cellSize - padding * 2;
+    final availableHeight = cellSize - padding * 2;
+
+    final text = '($x,$y)';
+    final textColor = _getContrastTextColor(Colors.grey.shade300);
+    final outlineColor = _getOutlineColor(Colors.grey.shade300);
+
+    double fontSize = cellSize * 0.35;
+    final textStyle = TextStyle(
+      color: textColor,
+      fontSize: fontSize,
+      fontWeight: FontWeight.bold,
+      height: 1.0,
+      shadows: [
+        Shadow(
+          color: outlineColor,
+          offset: const Offset(0.5, 0.5),
+          blurRadius: 0.5,
+        ),
+        Shadow(
+          color: outlineColor,
+          offset: const Offset(-0.5, -0.5),
+          blurRadius: 0.5,
+        ),
+        Shadow(
+          color: outlineColor,
+          offset: const Offset(0.5, -0.5),
+          blurRadius: 0.5,
+        ),
+        Shadow(
+          color: outlineColor,
+          offset: const Offset(-0.5, 0.5),
+          blurRadius: 0.5,
+        ),
+      ],
+    );
+
+    textPainter.text = TextSpan(text: text, style: textStyle);
+    textPainter.layout();
+
+    final textWidth = textPainter.width;
+    final textHeight = textPainter.height;
+
+    if (textWidth > availableWidth || textHeight > availableHeight) {
+      final scaleX = availableWidth / textWidth;
+      final scaleY = availableHeight / textHeight;
+      final scale = scaleX < scaleY ? scaleX : scaleY;
+      fontSize = fontSize * scale;
+
+      final adjustedStyle = textStyle.copyWith(fontSize: fontSize);
+      textPainter.text = TextSpan(text: text, style: adjustedStyle);
+      textPainter.layout();
+    }
+
+    final textX = rect.center.dx - textPainter.width / 2;
+    final textY = rect.center.dy - textPainter.height / 2;
+
+    textPainter.paint(canvas, Offset(textX, textY));
   }
 
   void _drawSelection(Canvas canvas) {

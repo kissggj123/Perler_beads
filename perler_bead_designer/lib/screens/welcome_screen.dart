@@ -15,37 +15,37 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   final List<WelcomePage> _pages = [
     WelcomePage(
-      icon: Icons.palette_outlined,
+      iconPath: 'assets/images/logo.png',
       title: '欢迎使用\n兔可可的拼豆世界',
       description: '一款专业的拼豆设计工具，让您的创意无限延伸',
       features: ['直观的设计界面', '丰富的颜色选择', '便捷的编辑工具'],
     ),
     WelcomePage(
-      icon: Icons.grid_on_outlined,
+      iconPath: 'assets/images/canvas.png',
       title: '设计画布',
       description: '在网格画布上自由创作您的拼豆作品',
       features: ['支持多种画布尺寸', '实时显示坐标和颜色代号', '撤销/重做功能', '自动保存设计'],
     ),
     WelcomePage(
-      icon: Icons.image_outlined,
+      iconPath: 'assets/images/image_import.png',
       title: '图片导入',
       description: '将您喜爱的图片转换为拼豆设计',
       features: ['智能颜色匹配', '图片缩放和移动', '透明背景处理', '智能抠图功能'],
     ),
     WelcomePage(
-      icon: Icons.inventory_2_outlined,
+      iconPath: 'assets/images/inventory.png',
       title: '库存管理',
       description: '管理您的拼豆库存，避免材料不足',
       features: ['记录拼豆库存数量', '自动对比所需数量', '低库存提醒', '材料清单导出'],
     ),
     WelcomePage(
-      icon: Icons.picture_as_pdf_outlined,
+      iconPath: 'assets/images/export.png',
       title: '导出分享',
       description: '将您的作品导出为多种格式',
       features: ['PNG 图片导出', 'PDF 文档导出', '包含坐标和统计', '支持中文显示'],
     ),
     WelcomePage(
-      icon: Icons.lightbulb_outline,
+      iconPath: 'assets/images/guide.png',
       title: '新手引导',
       description: '快速上手指南，助您轻松开始创作',
       features: ['点击格子显示颜色信息', '拖动编辑蒙版调整抠图', '使用快捷键提高效率', '一键重置所有设置'],
@@ -133,11 +133,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               color: Theme.of(context).colorScheme.primaryContainer,
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              page.icon,
-              size: 64,
-              color: Theme.of(context).colorScheme.primary,
-            ),
+            child: page.iconPath != null
+                ? Image.asset(
+                    page.iconPath!,
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.contain,
+                  )
+                : Icon(
+                    page.icon!,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
           ),
           const SizedBox(height: 32),
           Text(
@@ -235,13 +242,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 }
 
 class WelcomePage {
-  final IconData icon;
+  final String? iconPath;
+  final IconData? icon;
   final String title;
   final String description;
   final List<String> features;
 
   const WelcomePage({
-    required this.icon,
+    this.iconPath,
+    this.icon,
     required this.title,
     required this.description,
     required this.features,
