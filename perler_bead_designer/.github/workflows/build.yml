@@ -10,6 +10,14 @@ on:
         description: 'v1.0.0'
         required: false
         default: ''
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
 
 jobs:
   build-macos:
@@ -28,11 +36,11 @@ jobs:
         run: flutter pub get
 
       - name: Build macOS
-        run: flutter build macos --release
+        run: flutter build macos --${{ github.event.inputs.build_type || 'release' }}
 
       - name: Create DMG
         run: |
-          cd build/macos/Build/Products/Release
+          cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'debug' && 'Debug' || 'Release' }}
           hdiutil create -volname "兔可可的拼豆世界" \
             -srcfolder "兔可可的拼豆世界.app" \
             -ov -format UDZO \
@@ -61,11 +69,11 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --release
+        run: flutter build windows --${{ github.event.inputs.build_type || 'release' }}
 
       - name: Create ZIP archive
         run: |
-          cd build/windows/x64/runner/Release
+          cd build/windows/x64/runner/${{ github.event.inputs.build_type == 'debug' && 'Debug' || 'Release' }}
           Compress-Archive -Path * -DestinationPath ../../../兔可可的拼豆世界-windows.zip
 
       - name: Upload Windows artifact
