@@ -164,7 +164,7 @@ class VersionCheckService {
   }
 
   Future<VersionCheckResult> checkForUpdate({
-    String currentVersion = '2.2.0-fix',
+    String currentVersion = '2.5.0',
     bool forceCheck = false,
   }) async {
     const int maxRetries = 3;
