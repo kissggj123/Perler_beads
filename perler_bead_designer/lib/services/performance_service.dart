@@ -336,6 +336,17 @@ class PerformanceService extends ChangeNotifier {
     return 'Impeller 不支持此平台';
   }
 
+  static String getHighPerformanceRendererStatus() {
+    if (Platform.isMacOS || Platform.isWindows) {
+      return '高性能渲染器（DirectX/Vulkan/Metal）';
+    } else if (Platform.isLinux) {
+      return '高性能渲染器（Vulkan）';
+    } else if (Platform.isAndroid) {
+      return '高性能渲染器（Vulkan/OpenGL ES）';
+    }
+    return '高性能渲染器（实验性）';
+  }
+
   PerformanceMetrics getCurrentMetrics() {
     return PerformanceMetrics(
       averageFrameTime: _averageFrameTime,

@@ -164,50 +164,71 @@ class VersionCheckService {
   }
 
   Future<VersionCheckResult> checkForUpdate({
-    String currentVersion = '2.3.0',
+    String currentVersion = '2.2.0-fix',
     bool forceCheck = false,
   }) async {
-    try {
-      final response = await http
-          .get(
-            Uri.parse(_githubApiUrl),
-            headers: {
-              'Accept': 'application/vnd.github.v3+json',
-              'User-Agent': 'BunnyCC-PerlerBeadDesigner',
-            },
-          )
-          .timeout(const Duration(seconds: 30));
+    const int maxRetries = 3;
+    const Duration retryDelay = Duration(seconds: 1);
 
-      if (response.statusCode != 200) {
-        return VersionCheckResult(
-          hasUpdate: false,
-          errorMessage: '服务器返回错误: ${response.statusCode}',
-        );
-      }
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final response = await http
+            .get(
+              Uri.parse(_githubApiUrl),
+              headers: {
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'BunnyCC-PerlerBeadDesigner',
+              },
+            )
+            .timeout(const Duration(seconds: 15));
 
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      final releaseInfo = ReleaseInfo.fromJson(json);
-
-      final hasUpdate = _compareVersions(currentVersion, releaseInfo.version);
-
-      if (!forceCheck && hasUpdate) {
-        final skippedVersion = prefs.getString(_skippedVersionKey);
-        if (skippedVersion == releaseInfo.version) {
+        if (response.statusCode != 200) {
+          if (attempt < maxRetries) {
+            await Future.delayed(retryDelay);
+            continue;
+          }
           return VersionCheckResult(
-            hasUpdate: true,
-            releaseInfo: releaseInfo,
-            isSkipped: true,
+            hasUpdate: false,
+            errorMessage: '服务器返回错误: ${response.statusCode}',
           );
         }
+
+        final json = jsonDecode(response.body) as Map<String, dynamic>;
+        final releaseInfo = ReleaseInfo.fromJson(json);
+
+        final hasUpdate = _compareVersions(currentVersion, releaseInfo.version);
+
+        if (!forceCheck && hasUpdate) {
+          final skippedVersion = prefs.getString(_skippedVersionKey);
+          if (skippedVersion == releaseInfo.version) {
+            return VersionCheckResult(
+              hasUpdate: true,
+              releaseInfo: releaseInfo,
+              isSkipped: true,
+            );
+          }
+        }
+
+        await _updateLastCheckTime();
+
+        return VersionCheckResult(
+          hasUpdate: hasUpdate,
+          releaseInfo: releaseInfo,
+        );
+      } catch (e) {
+        if (attempt < maxRetries) {
+          await Future.delayed(retryDelay);
+          continue;
+        }
+        debugPrint('Version check error (after $attempt attempts): $e');
+        return VersionCheckResult(hasUpdate: false, errorMessage: '检查更新失败: $e');
       }
-
-      await _updateLastCheckTime();
-
-      return VersionCheckResult(hasUpdate: hasUpdate, releaseInfo: releaseInfo);
-    } catch (e) {
-      debugPrint('Version check error: $e');
-      return VersionCheckResult(hasUpdate: false, errorMessage: '检查更新失败: $e');
     }
+
+    return VersionCheckResult(
+      hasUpdate: false,
+      errorMessage: '检查更新失败: 达到最大重试次数',
+    );
   }
 
   bool _compareVersions(String current, String latest) {

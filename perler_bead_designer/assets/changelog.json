@@ -1,6 +1,18 @@
 {
   "versions": [
     {
+      "version": "2.2.0-fix",
+      "date": "2026-03-28",
+      "changes": [
+        "修复：检测更新失败的问题（GitHub API连接问题）",
+        "修复：ClientException with SocketException: Failed host lookup",
+        "新增：重试机制（最多3次重试）",
+        "新增：更短的超时时间（15秒）",
+        "新增：高性能渲染器（实验性）",
+        "新增：本地版本信息缓存加载"
+      ]
+    },
+    {
       "version": "2.3.0",
       "date": "2026-03-28",
       "changes": [
